@@ -248,10 +248,15 @@ EndFunc
 Func _CreateGUI($sExpiryDate)
     $g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, -1, -1, -1, $WS_EX_CLIENTEDGE)
 
-    ; >>> ĐẨY ẢNH XUỐNG DƯỚI 30 PIXEL ĐỂ CHỪA CHỖ CHO THANH TAB MẶC ĐỊNH <<<
-    ; Tọa độ Y đổi thành 30, Chiều cao giảm đi 30 (840 - 30 = 810)
-    Local $hBgPic = GUICtrlCreatePic(@ScriptDir & "\hinhnen.jpg", 0, 30, 1280, 810)
-    GUICtrlSetState($hBgPic, $GUI_DISABLE) ; Bắt buộc phải khóa ảnh để xài được các nút bấm
+    ; >>> LỆNH LỒNG ẢNH VÀO FILE .EXE <<<
+    ; Tham số 1: Tên file ảnh đang nằm cạnh file code lúc bạn lập trình.
+    ; Tham số 2: Nơi bức ảnh sẽ được xả nén ra khi khách mở tool (ném vào Temp cho sạch).
+    ; Tham số 3: 1 = Ghi đè nếu đã có.
+    FileInstall("hinhnen.jpg", @TempDir & "\hinhnen_temp.jpg", 1)
+
+    ; Load ảnh nền từ thư mục Temp
+    Local $hBgPic = GUICtrlCreatePic(@TempDir & "\hinhnen_temp.jpg", 0, 30, 1280, 810)
+    GUICtrlSetState($hBgPic, $GUI_DISABLE) ; Khóa ảnh
 
     GUISetFont(10, 400, 0, "Arial")
     GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
