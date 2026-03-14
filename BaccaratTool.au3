@@ -246,13 +246,19 @@ EndFunc
 ; ==================================================================================================
 
 Func _CreateGUI($sExpiryDate)
-    ; (Giữ nguyên phần tạo nút ẩn và GUI)
     $g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, -1, -1, -1, $WS_EX_CLIENTEDGE)
-    GUISetBkColor(0xF5F5F5)
+
+    ; >>> ĐẨY ẢNH XUỐNG DƯỚI 30 PIXEL ĐỂ CHỪA CHỖ CHO THANH TAB MẶC ĐỊNH <<<
+    ; Tọa độ Y đổi thành 30, Chiều cao giảm đi 30 (840 - 30 = 810)
+    Local $hBgPic = GUICtrlCreatePic(@ScriptDir & "\hinhnen.jpg", 0, 30, 1280, 810)
+    GUICtrlSetState($hBgPic, $GUI_DISABLE) ; Bắt buộc phải khóa ảnh để xài được các nút bấm
+
     GUISetFont(10, 400, 0, "Arial")
     GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
 
+    ; TẠO TAB (Cho phần thân Tab trong suốt để lộ ảnh nền bên dưới)
     $g_hTab = GUICtrlCreateTab(5, 5, 1270, 830)
+    GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
     GUICtrlSetFont(-1, 10, 700)
 
     Local $hTab1 = GUICtrlCreateTabItem("Giao Diện Chính")
@@ -262,7 +268,6 @@ Func _CreateGUI($sExpiryDate)
     _CreateTab_ConfigHelper()
 
     GUICtrlCreateTabItem("")
-    ; [QUAN TRỌNG] Xóa dòng GUICtrlSetState($g_hTab, $GUI_SHOW) ở đây nếu nó gây hiện tab đè lên
 
     _LoadSettings()
     _UpdateLicenseInfoLabels($sExpiryDate)
@@ -272,16 +277,11 @@ Func _CreateGUI($sExpiryDate)
     AdlibRegister("_UpdateClock", 1000)
     _UpdateClock()
 
-    ; --- [SỬA ĐOẠN NÀY ĐỂ ẨN TUYỆT ĐỐI] ---
     If $g_bStartHidden Then
-        ; Nếu chạy ẩn: KHÔNG LÀM GÌ CẢ (Vì mặc định GUICreate là ẩn)
-        ; Hoặc chắc ăn hơn thì set HIDE, nhưng tuyệt đối không được SHOW trước đó
         GUISetState(@SW_HIDE, $g_hGUI)
     Else
-        ; Chỉ hiện nếu không có lệnh ẩn
         GUISetState(@SW_SHOW, $g_hGUI)
     EndIf
-    ; --------------------------------------
 EndFunc
 
 Func _CreateTab_MainTool()
