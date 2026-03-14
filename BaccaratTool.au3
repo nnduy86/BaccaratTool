@@ -17,17 +17,6 @@
 #include "Json.au3"
 #include "WinHttp.au3"
 
-; ==================================================================================================
-; GIAO DIỆN ĐỒ HỌA (GUI) CHO CHIẾN LƯỢC CƯỢC BACCARAT
-; Tác giả: Gemini & Người dùng
-; Phiên bản: 28.11-3S-SafeMode
-; Ngày: 2025-11-28
-;
-; TỔNG HỢP CÁC THAY ĐỔI TRONG BẢN NÀY:
-; 1. [LOGIC 3S] Cập nhật chế độ "An toàn tuyệt đối": Gặp HÒA -> Bỏ cụm -> Chờ cổng mới.
-; 2. [AUTO] Tự động lấy tín hiệu mới khi phát hiện đổi cầu (Cổng mới).
-; ==================================================================================================
-
 ; <<<< Yêu cầu quyền quản trị để tool hoạt động ổn định >>>>
 #RequireAdmin
 
@@ -39,18 +28,12 @@ Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
 Global Const $g_sVersion = "1.1" ; Phiên bản hiện tại
-Global Const $g_sRequiredConfigVersion = "2.8"
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
-
-; Link RAW trỏ trực tiếp đến file version.txt trên Github (Link chuẩn nhất)
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
-
-; Link tải trực tiếp file BaccaratTool.exe trên Github
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
 
 ; --- KHAI BÁO BIẾN TOÀN CỤC ---
 ; ==================================================================================================
-; --- Biến điều khiển trạng thái ---
 Global Const $g_iTimeOutLimit = 45000
 Global $g_bIsRunning = False
 Global $g_sIniPath
@@ -65,37 +48,26 @@ Global $g_hRemoteCheckTimer = 0
 Global $g_hCheckbox_ContinuousMode
 Global $g_hButton_Help
 Global $g_hButton_RefreshStats
-; Biến lưu mã định danh độc nhất của trình duyệt do Tool mở
 Global $g_hTargetGameWin = 0
 Global $g_hCheckbox_StatsMode ; Checkbox Tách/Gộp
 Global $g_hCombo_StatsTime    ; Combo chọn Vĩnh Viễn/Phiên
 Global $g_sCurrentRuleSignature = "Global"
 Global $g_hStreakGUI = 0 ; Biến lưu cửa sổ popup thống kê
-; [MỚI] BIẾN CHO CHẾ ĐỘ QUAN SÁT
 Global $g_hCheckbox_ObserveMode ; Checkbox bật/tắt quan sát
-
-; --- BIẾN CHO LOGIC SAU KHI THẮNG ---
 Global $g_hCombo_AfterWinLogic      ; Combo box chọn 4 chế độ
 Global $g_iPostWinState = 0         ; 0=Bình thường, 1=Đợi gãy để lấy, 2=Đợi gãy để bỏ
 Global $g_sLastTrendToWait = ""     ; Lưu lại dây đang theo để chờ nó gãy
 Global $g_hRadio_Method_Custom ; [MỚI] Chọn đánh theo Tín hiệu nhập tay
 Global $g_iHistoryCutoffIndex = 0 ; Biến lưu điểm cắt đuôi lịch sử để tách cầu
-
-; --- CÁC BIẾN GIAO DIỆN O+M (THÊM VÀO ĐỂ SỬA LỖI WARNING) ---
 Global $g_hButton_OM_Reset      ; Nút Reset Memory
 Global $g_hLabel_OM_Status      ; Nhãn trạng thái Memory
 Global $g_hRadio_OM_3, $g_hRadio_OM_4, $g_hRadio_OM_5 ; 3 nút chọn số tay
 Global $g_hCheckbox_Blacklist   ; Checkbox Blacklist
 Global $g_hInput_ObserveHands   ; Ô nhập số tay cần chờ
 Global $g_hListView_Stats ; Biến quản lý bảng thống kê
-; ==============================================================================
-; --- BIẾN CHO TÍNH NĂNG OBSERVE + MEMORY (O+M) & BLACKLIST ---
-; ==============================================================================
 Global $g_bOM_Enabled = False       ; Bật/Tắt tính năng O+M
 Global $g_iOM_WindowSize = 4        ; Số tay quan sát (3, 4, 5)
 Global $g_sOM_MemoryData = "|"      ; Chuỗi lưu bộ nhớ (Dạng: |Sig_WIN:Count|Sig_LOSS:Count|...)
-
-; --- Biến điều khiển giao diện O+M ---
 Global $g_hButton_OM_Reset          ; Nút Reset Memory
 Global $g_hLabel_OM_Status          ; Nhãn trạng thái Memory
 Global $g_hRadio_OM_3               ; Radio chọn 3 tay
@@ -105,14 +77,12 @@ Global $g_hInput_OM_BadPatterns     ; Ô nhập các thế bài xấu cần lọ
 Global $g_hCheckbox_OM_HardMem      ; Checkbox "Nhớ Dai"
 Global $g_hCheckbox_Blacklist       ; Checkbox Bật/Tắt Blacklist
 Global $g_hCheckbox_EnableAI        ; Checkbox AI (nếu chưa có)
-; --- Biến trạng thái "Đang Quan Sát" ---
 Global $g_bOM_IsObserving = False   ; Cờ báo đang trong quá trình soi
 Global $g_sOM_ActiveRuleSig = ""    ; Tên rule gốc đang soi (VD: BBBB-B)
 Global $g_iOM_StartIndex = -1       ; Index bắt đầu soi
 Global $g_sOM_ExpectedTarget = ""   ; Cửa dự kiến đánh (B hoặc P)
 Global $g_sOM_LastBetSignature = "" ; Lưu signature vừa đánh để update Memory sau khi có KQ
 Global $g_iSkipCountDown = 0 ; Biến đếm ngược số tay cần bỏ qua sau Win
-; --- BIẾN CHO PHƯƠNG PHÁP TÙY CHỈNH (MULTI-RULES) ---
 Global $g_hInput_CustomRules        ; Hộp nhập liệu lớn (Edit Box)
 Global $g_hCheckbox_ColumnMode      ; Checkbox: Chế độ Cột
 Global $g_hCheckbox_ResetOnNewCol   ; Checkbox: Gãy cột -> Hủy
@@ -122,7 +92,6 @@ Global $g_iLastBetResultIndex = -1
 Global $g_iCustomSeqStep = 0
 Global $g_sCurrentTargetSeq = ""    ; Biến lưu chuỗi cần đánh hiện tại (Khi bắt được cầu)
 Global $g_hRadio_Method_AI
-; --- BIẾN CHO CHẾ ĐỘ MULTI-RULES NÂNG CAO ---
 Global $g_hCheckbox_SeparateQLV      ; Checkbox chọn chế độ QLV Riêng
 Global $g_aRuleLevels[100]           ; Mảng lưu Level vốn của 100 dòng (Mỗi dòng 1 ô nhớ)
 Global $g_iLastActiveRuleIndex = -1  ; Biến nhớ: Ván vừa rồi là do Dòng nào đánh?
@@ -131,13 +100,11 @@ Global $g_bStartHidden = False
 If $CmdLine[0] > 0 Then
     For $i = 1 To $CmdLine[0]
         Local $sArg = $CmdLine[$i]
-
         ; 1. Nhận tên bàn (B1, B2...)
         If StringRegExp($sArg, "^B\d+$") Then
             $g_sMyTableID = $sArg
-            Global $g_sIniPath = @ScriptDir & "\config_" & $g_sMyTableID & ".ini"
+            Global $g_sIniPath = @ScriptDir & "\config.ini" ; <--- ÉP LUÔN VỀ CONFIG.INI
         EndIf
-
         ; 2. Nhận lệnh CHẠY ẨN (/starthidden)
         If StringInStr($sArg, "/starthidden") Then
             $g_bStartHidden = True
@@ -146,21 +113,17 @@ If $CmdLine[0] > 0 Then
 Else
     Global $g_sIniPath = @ScriptDir & "\config.ini"
 EndIf
-; Biến lưu tạm giá trị khi bấm phím S
 Global $g_iTempX = 0
 Global $g_iTempY = 0
 Global $g_iTempColor = 0
-; --- BIẾN HỖ TRỢ AUTO-SAVE ---
 Global $g_bNeedAutoSave = False
 Global $g_hAutoSaveTimer = 0
 Global $g_hButton_SyncColors
 Global $g_sWDSession = ""
 Global $g_bIsLoginComplete = False ; [MỚI] Cờ báo hiệu đã đăng nhập xong
-; --- Biến giao diện (GUI Handles) ---
 Global $g_hGUI, $g_hTab
 Global $g_hTabItemConfig
 Global $g_hInput_InitialCapital, $g_hInput_InitialBet, $g_hInput_TakeProfit, $g_hInput_StopLoss
-; --- BIẾN CHO LOGIC HÒA & CẤU HÌNH ---
 Global $g_bSkipCurrentCluster = False ; Biến cờ đánh dấu bỏ cụm khi gặp Hòa
 Global $g_hLabel_CurrentBalance, $g_hLabel_Profit, $g_hLabel_TotalHands, $g_hLabel_ExpiryDate, $g_hLabel_DaysRemaining
 Global $g_hLabel_TotalVolume
@@ -171,7 +134,6 @@ Global $g_hLabel_Time
 Global $g_hLabel_TotalB_Val, $g_hLabel_TotalP_Val, $g_hLabel_TotalT_Val
 Global $g_hButton_SaveQLV, $g_hButton_DeleteQLV
 Global $g_bManualStopped = False ; [MỚI] Đánh dấu người dùng chủ động tắt hoặc tắt trình duyệt
-; --- Biến giao diện Tab Cấu hình ---
 Global $g_hInput_ScanX, $g_hInput_ScanY, $g_hInput_ScanColor, $g_hLabel_ScanColorPreview, $g_hCheckbox_ToggleScan
 Global $g_hButton_Unlock, $g_hButton_Lock
 Global $g_aConfigControls[0]
@@ -188,37 +150,24 @@ Global $g_hButton_GetBetTimeTL, $g_hButton_GetBetTimeBR
 Global $g_hButton_GetBetTimeColor
 Global $g_hInput_Shade_Result, $g_hInput_Shade_Timer, $g_hInput_Shade_NewShoe ; 3 biến dung sai riêng
 Global $g_hButton_TestColor_Result, $g_hButton_TestColor_Timer, $g_hButton_TestColor_NewShoe ; 3 nút test
-; Thêm vào khu vực khai báo Global (đầu file)
 Global $g_bManualStopped = False ; [MỚI] Đánh dấu người dùng chủ động tắt
 Global $g_iShade_Result = 10    ; Mặc định dung sai kết quả
 Global $g_iShade_Timer = 20     ; Mặc định dung sai giờ cược
 Global $g_iShade_NewShoe = 5    ; Mặc định dung sai xu bài
-
 Global $g_hRadio_ClickMode_Control, $g_hRadio_ClickMode_Mouse
 Global $g_hInput_ClickDelay
-
 Global $g_sAutoStartProfile = ""
-
-; --- Biến giao diện cho Chip Cược ---
 Global $g_aCheckbox_ChipEnabled[5], $g_aInput_ChipValue[5], $g_aInput_ChipX[5], $g_aInput_ChipY[5], $g_aButton_GetChipPos[5]
 Global $g_iMouseSpeed = 0 ; 0 là tức thì, 10 là mặc định chậm
 Global $g_hInput_MouseSpeed ; Biến cho ô nhập liệu
-
-; --- Biến giao diện Quản lý Cấu hình Sảnh ---
 Global $g_hCombo_Profiles, $g_hInput_ProfileName, $g_hButton_SaveProfileToIni, $g_hButton_DeleteProfileFromIni, $g_hButton_DownloadConfig
-
-; --- Biến giao diện Tùy chọn nhanh ở Tab chính ---
 Global $g_hCombo_Profiles_Main
 Global $g_hRadio_ClickMode_Control_Main, $g_hRadio_ClickMode_Mouse_Main
 Global $g_hInput_ClickDelay_Main
 Global $g_hCheckbox_DetectNewShoe_Main
-
-; --- Biến giao diện Tab Tùy chỉnh QLV ---
 Global $g_hGroup_QLV_Flexible
 Global $g_hInput_CustomQLV_Edit
 Global $g_hCombo_QLV_Presets
-
-; --- Biến Cấu hình Game (được tải từ file INI) ---
 Global $g_sGameWindowClass
 Global $g_aBankerButtonPos[2]
 Global $g_aPlayerButtonPos[2]
@@ -233,8 +182,6 @@ Global $g_aNewShoeArea[4]
 Global $g_sClickMode
 Global $g_iClickDelay
 Global $g_aChipConfig[5][4] ; [IsEnabled, Value, X, Y]
-
-; --- Biến lưu trữ cài đặt & dữ liệu phiên ---
 Global $g_fInitialCapital = 0.0, $g_fInitialBet = 0.0, $g_fTakeProfit = 0.0, $g_fStopLoss = 0.0
 Global $g_fTotalProfit = 0.0, $g_fCurrentBet = 0.0
 Global $g_fLastBetAmount = 0.0
@@ -247,73 +194,44 @@ Global $g_aHighlightIndices[0]
 Global Const $g_iHighlightColor = 0xFFFFE0
 Global Const $g_iLatestHighlightColor = 0xADD8E6
 Global $g_iTotalBanker = 0, $g_iTotalPlayer = 0, $g_iTotalTie = 0
-
-; --- Biến Quản lý vốn (QLV) ---
 Global Const $g_sQLVMode = "Flexible" ; [CỐ ĐỊNH] Luôn là Flexible
 Global $g_aCustomQLVTable[0][4] ; [Lệnh, Vốn, ThắngVề, ThuaVề]
 Global $g_iCustomQLV_Index = 0
-
-; --- Biến thống kê phương pháp ---
 Global $g_iStrategyWins = 0, $g_iStrategyLosses = 0, $g_iCurrentWinStreak = 0, $g_iCurrentLossStreak = 0, $g_iMaxWinStreak = 0, $g_iMaxLossStreak = 0
 Global $g_iMaxWinStreakCount = 0, $g_iMaxLossStreakCount = 0
-; Mảng lưu tần suất: Index là độ dài chuỗi, Giá trị là số lần xuất hiện
-; Ví dụ: $g_aLossFreq[3] = 5 nghĩa là đã gặp chuỗi thua 3 tổng cộng 5 lần
 Global $g_aWinFreq[50], $g_aLossFreq[50]
-
-; --- BIẾN PHƯƠNG PHÁP DUY NHẤT: CỤM 3 (IGNORE TIE) ---
 Global $g_iCapitalLevel = 1 ; Cấp vốn hiện tại (1, 2, 3...)
-; -----------------------------------------------------
 Global $g_hCheckbox_Blacklist    ; <--- Checkbox Bật/Tắt Né Cầu
 Global $g_hInput_Blacklist       ; Ô nhập danh sách đen
 Global $g_sBlacklistString = ""  ; Biến lưu giá trị nhập
-
-; --- Thêm 2 dòng này vào khu vực khai báo biến Global ---
 Global $g_iCycleStep = 1      ; Biến đếm bước trong chu kỳ quan sát
 Global $g_bCycleBroken = False ; Biến đánh dấu gãy cầu
-
-; --- BIẾN QUÉT DỮ LIỆU ĐA BÀN ---
 Global $g_aOtherTablesLastResult[13] ; Lưu kết quả cũ của 12 bàn để so sánh
-
 Global $g_hInput_HistoryLimit ; <--- THÊM DÒNG NÀY (Biến ô nhập giới hạn view)
 Global Const $HARD_LIMIT_RAM = 500 ; <--- THÊM DÒNG NÀY (Giới hạn cứng bộ nhớ)
 Global $g_hCheckbox_Blacklist_IgnoreRunning ; <--- [MỚI] Biến Checkbox bỏ qua Blacklist khi đang chạy
-; ==================================================================================================
-; --- BẮT ĐẦU KỊCH BẢN ---
-; ==================================================================================================
-_Main()
-; ==================================================================================================
 
+_Main()
 
 Func _Main()
-	; 1. Chống mở 2 tool cùng lúc (Dành cho bản chạy Độc Lập)
 	If _Singleton("ToolCasino_Lock_Main", 1) = 0 Then
 		MsgBox(48, "Thông báo", "Tool đang được mở rồi! Vui lòng kiểm tra dưới thanh Taskbar.")
 		Exit
 	EndIf
-
-	; >>> 2. KIỂM TRA CẬP NHẬT GITHUB KHI VỪA MỞ TOOL <<<
 	_CheckForUpdates()
-
-	; 3. KIỂM TRA BẢN QUYỀN TRƯỚC KHI VÀO TOOL
 	Local $aLicenseInfo = _CheckLicenseOnline()
 	Local $sStatus = $aLicenseInfo[0]
 	Local $sData = $aLicenseInfo[1]
-
 	If $sStatus = "OK" Then
-		; Bản quyền hợp lệ
 		$g_sHWID = _GetHardwareID()
 		$g_sExpiryDate = $sData
 	ElseIf $sStatus = "EXPIRED" Then
-		; Hết hạn sử dụng
 		_ShowExpiryDialog($sData)
 		Exit
 	Else
-		; Máy chưa kích hoạt hoặc lỗi kết nối
 		_ShowActivationDialog(_GetHardwareID())
 		Exit
 	EndIf
-
-	; 4. KHỞI ĐỘNG GIAO DIỆN VÀ VÀO VÒNG LẶP CHÍNH
 	_CreateGUI($g_sExpiryDate)
 	_MainLoop()
 EndFunc   ;==>_Main
@@ -1286,21 +1204,9 @@ EndFunc
 
 Func _LoadSelectedProfile($sProfileName)
     If $sProfileName = "" Then Return
-    Local $sSection = "Profile_" & $sProfileName
-    Local $sFileToRead = $g_sIniPath
-    Local $bUseChildData = False
 
-    ; Kiểm tra file con
-    Local $iTestX = Number(IniRead($g_sIniPath, $sSection, "BankerX", "0"))
-    If $iTestX = 0 Then
-        Local $sShortID = StringReplace(StringReplace($sProfileName, "Ban ", "B"), " ", "")
-        Local $sChildPath = @ScriptDir & "\config_" & $sShortID & ".ini"
-        If FileExists($sChildPath) Then
-            $sFileToRead = $sChildPath
-            $bUseChildData = True
-            _UpdateStatus("⚠️ Config chính rỗng -> Đã tự động tải dữ liệu từ " & $sShortID)
-        EndIf
-    EndIf
+    Local $sSection = "Profile_" & $sProfileName
+    Local $sFileToRead = $g_sIniPath ; <--- ÉP LUÔN LUÔN CHỈ ĐỌC TỪ FILE CONFIG.INI GỐC
 
     ; --- 1. TẢI CÀI ĐẶT CHUNG ---
     GUICtrlSetData($g_hInput_InitialCapital, IniRead($sFileToRead, $sSection, "InitialCapital", "10.000.000"))
@@ -1414,7 +1320,7 @@ EndIf
     ; Gọi hàm này ngay lập tức để nó cập nhật giao diện (Mờ/Sáng các ô nhập liệu)
     _ToggleMethodInputs()
     ; --------------------------------------------------------
-    _UpdateStatus("Đã tải cấu hình: " & $sProfileName & ($bUseChildData ? " (Từ file con)" : ""))
+   _UpdateStatus("Đã tải cấu hình: " & $sProfileName)
 
 EndFunc
 
@@ -3429,16 +3335,6 @@ Func _MasterSave($sProfileName, $bSilent = True)
         IniWrite($g_sIniPath, $sSection, "ChipX_" & $i, GUICtrlRead($g_aInput_ChipX[$i]))
         IniWrite($g_sIniPath, $sSection, "ChipY_" & $i, GUICtrlRead($g_aInput_ChipY[$i]))
     Next
-
-    Local $sShortID = StringReplace(StringReplace($sProfileName, "Ban ", "B"), " ", "")
-    Local $sChildPath = @ScriptDir & "\config_" & $sShortID & ".ini"
-    Local $aData = IniReadSection($g_sIniPath, $sSection)
-    If Not @error Then
-        For $i = 1 To $aData[0][0]
-            IniWrite($sChildPath, $sSection, $aData[$i][0], $aData[$i][1])
-        Next
-    EndIf
-
     _SaveSessionState()
     IniWrite($g_sIniPath, "UISettings", "LastProfile", $sProfileName)
     If Not $bSilent Then _UpdateStatus("Đã lưu dữ liệu bàn: " & $sProfileName)
