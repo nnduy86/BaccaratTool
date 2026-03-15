@@ -247,7 +247,6 @@ EndFunc
 
 Func _CreateGUI($sExpiryDate)
     $g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, -1, -1, -1, $WS_EX_CLIENTEDGE)
-
     ; >>> LỆNH LỒNG ẢNH VÀO FILE .EXE <<<
     ; Tham số 1: Tên file ảnh đang nằm cạnh file code lúc bạn lập trình.
     ; Tham số 2: Nơi bức ảnh sẽ được xả nén ra khi khách mở tool (ném vào Temp cho sạch).
@@ -265,7 +264,7 @@ Func _CreateGUI($sExpiryDate)
     $g_hTab = GUICtrlCreateTab(5, 5, 1270, 830)
     GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
     GUICtrlSetFont(-1, 10, 700)
-
+    ;GUICtrlSetColor(-1, 0x0066CC)
     Local $hTab1 = GUICtrlCreateTabItem("Giao Diện Chính")
     _CreateTab_MainTool()
 
@@ -1488,6 +1487,7 @@ Func _StartProcess()
     _ApplyCurrentSettings()
     $g_hSessionTimer = TimerInit()
     _SendActivityLog("Start")
+	$g_fTotalProfit = 0.0
 
     $g_bIsRunning = True
     _SetControlsState(False) ; <--- GỌI ĐỔI MÀU NÚT SANG TRẠNG THÁI RUNNING TẠI ĐÂY
@@ -1745,7 +1745,7 @@ Func _HaltProcess($sReason)
     EndIf
 EndFunc
 Func _ResetAllStatsAndState()
-    $g_fTotalProfit = 0.0
+    ;$g_fTotalProfit = 0.0
 
     ; --- [LOGIC 7H SÁNG GIỮ NGUYÊN] ---
     Local $sFileStats = @ScriptDir & "\stats_history.ini"
@@ -3853,7 +3853,7 @@ EndFunc
 ; ==============================================================================
 Func _ResetSessionData_ForNewRound()
     ; 1. Xóa sạch biến bộ nhớ
-    $g_fTotalProfit = 0
+    ;$g_fTotalProfit = 0
     $g_fTotalVolume = 0
     $g_iCapitalLevel = 0  ; Reset level vốn về 0 (quan trọng)
     $g_iSessionCount = 0
