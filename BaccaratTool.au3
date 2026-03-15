@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "1.1" ; Phiên bản hiện tại
+Global Const $g_sVersion = "1.0" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -328,8 +328,13 @@ Func _MainLoop()
 			Case $g_hRadio_Method_Custom, $g_hRadio_Method_AI
 				_ToggleMethodInputs()
 			Case $GUI_EVENT_CLOSE
-				If $aMsg[1] = $g_hGUI Then
+				If $aMsg[1] = $g_hGUI Or $aMsg[0] = $GUI_EVENT_CLOSE Then
 					_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
+
+                    ; --- BẤM X LÀ DIỆT LUÔN CHROME VÀ TẮT TOOL ---
+                    If $g_sWDSession <> "" Then _WD_DeleteSession($g_sWDSession)
+                    ProcessClose("chromedriver.exe")
+
 					Exit
 				EndIf
 			Case $g_hButton_Help
@@ -411,44 +416,60 @@ Func _MainLoop()
 					EndIf
 
 					If $bNeedRinhRap Then
-						_UpdateStatus("⏳ Hãy tự mở sảnh Nhiều Bàn. Tool đang rình rập...")
-						GUICtrlSetData($g_hButton_Start, "ĐANG MỞ SẢNH...")
-						Local $bFoundLobby = False
-						Local $hWaitLobby = TimerInit()
-						Local $sBrowserClass = GUICtrlRead($g_hInput_WindowClass)
-						If $sBrowserClass = "" Then $sBrowserClass = "Chrome_WidgetWin_1"
+                        _UpdateStatus("⏳ Hãy tự mở sảnh Nhiều Bàn. Tool đang rình rập...")
+                        GUICtrlSetData($g_hButton_Start, "ĐANG MỞ SẢNH...")
 
-						While TimerDiff($hWaitLobby) < 180000
-							Opt("WinTitleMatchMode", 2)
-							Local $hTarget = WinGetHandle("SECURE_BACCARAT_TOOL_9999")
-							If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Baccarat Multiplay; CLASS:" & $sBrowserClass & "]")
-							If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Pragmatic Play | Lobby; CLASS:" & $sBrowserClass & "]")
-							If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Nhiều Bàn; CLASS:" & $sBrowserClass & "]")
+                        Local $bFoundLobby = False
+                        Local $hWaitLobby = TimerInit()
+                        Local $sBrowserClass = GUICtrlRead($g_hInput_WindowClass)
+                        If $sBrowserClass = "" Then $sBrowserClass = "Chrome_WidgetWin_1"
 
-							If $hTarget <> 0 And WinExists($hTarget) Then
-								WinSetTitle($hTarget, "", "SECURE_BACCARAT_TOOL_9999")
-								Sleep(300)
-								$g_hTargetGameWin = WinGetHandle("SECURE_BACCARAT_TOOL_9999")
-								If $g_hTargetGameWin = 0 Then $g_hTargetGameWin = $hTarget
-								$bFoundLobby = True
-								ExitLoop
-							EndIf
+                        While TimerDiff($hWaitLobby) < 180000
+                            Opt("WinTitleMatchMode", 2)
+                            Local $hTarget = WinGetHandle("SECURE_BACCARAT_TOOL_9999")
+                            If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Baccarat Multiplay; CLASS:" & $sBrowserClass & "]")
+                            If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Pragmatic Play | Lobby; CLASS:" & $sBrowserClass & "]")
+                            If $hTarget = 0 Then $hTarget = WinGetHandle("[TITLE:Nhiều Bàn; CLASS:" & $sBrowserClass & "]")
 
-							Local $aMsgWait = GUIGetMsg(1)
-							If $aMsgWait[0] = $GUI_EVENT_CLOSE Then Exit
-							Sleep(500)
-						WEnd
+                            If $hTarget <> 0 And WinExists($hTarget) Then
+                                WinSetTitle($hTarget, "", "SECURE_BACCARAT_TOOL_9999")
+                                Sleep(300)
+                                $g_hTargetGameWin = WinGetHandle("SECURE_BACCARAT_TOOL_9999")
+                                If $g_hTargetGameWin = 0 Then $g_hTargetGameWin = $hTarget
+                                $bFoundLobby = True
+                                ExitLoop
+                            EndIf
 
-						If $bFoundLobby Then
-							_UpdateStatus("✅ Đã khóa cứng phần cứng trình duyệt! TỰ ĐỘNG CHẠY!")
-							_StartProcess()
-						Else
-							_HaltProcess("⛔ Lỗi: Hết thời gian. Bạn chưa mở sảnh Nhiều bàn!")
-							GUICtrlSetData($g_hButton_Start, "BẮT ĐẦU")
-							GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
-							GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-						EndIf
-					EndIf
+                            Local $aMsgWait = GUIGetMsg(1)
+                            If $aMsgWait[0] = $GUI_EVENT_CLOSE Then Exit
+
+                            ; ---> FIX LỖI KẸT Ở ĐÂY: CHO PHÉP BẤM NÚT ĐỂ HỦY NGAY LẬP TỨC <---
+                            If $aMsgWait[0] = $g_hButton_Start Then
+                                _UpdateStatus("🛑 Đã hủy quá trình tìm sảnh!")
+                                _StopProcess()
+                                ExitLoop
+                            EndIf
+
+                            ; ---> CẢM BIẾN: NẾU BẠN BẤM DẤU X TẮT WEB, TOOL TẮT THEO TỨC THÌ <---
+                            If Not ProcessExists("chromedriver.exe") Then
+                                _UpdateStatus("⚠️ Trình duyệt đã bị đóng! Hủy tìm sảnh.")
+                                _StopProcess()
+                                ExitLoop
+                            EndIf
+
+                            Sleep(500)
+                        WEnd
+
+                        If $bFoundLobby Then
+                            _UpdateStatus("✅ Đã khóa cứng phần cứng trình duyệt! TỰ ĐỘNG CHẠY!")
+                            _StartProcess()
+                        Else
+                            ; Chỉ báo lỗi nếu không phải do người dùng chủ động bấm Hủy
+                            If Not $g_bManualStopped Then
+                                _HaltProcess("⛔ Lỗi: Hết thời gian. Bạn chưa mở sảnh Nhiều bàn!")
+                            EndIf
+                        EndIf
+                    EndIf
 				EndIf
 			Case $g_hButton_Stop
 				_StopProcess()
@@ -1716,29 +1737,82 @@ EndFunc
 Func _StopProcess()
     $g_bIsRunning = False
     $g_bManualStopped = True
+    _UpdateStatus("🛑 Đã dừng Tool và chốt Lợi nhuận vào Số dư!")
 
-    _UpdateStatus("🛑 Đã dừng Tool! (Trang chủ vẫn được giữ lại)")
-
-    ; 1. Chỉ đóng Sảnh Game (Nếu còn mở)
-    If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then
-        WinClose($g_hTargetGameWin)
-    EndIf
+    If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
     $g_hTargetGameWin = 0
+    ;If $g_sWDSession <> "" Then
+        ;_WD_DeleteSession($g_sWDSession)
+        ;$g_sWDSession = ""
+    ;EndIf
+    ;ProcessClose("chromedriver.exe")
 
-    ; ---> ĐÃ BỎ LỆNH ĐÓNG TRANG CHỦ VÀ XÓA SESSION Ở ĐÂY <---
+    ; --- 1. CHỐT LỢI NHUẬN VÀO SỐ DƯ (CỘNG DỒN) ---
+    If $g_fTotalProfit <> 0 Then
+        $g_fInitialCapital += $g_fTotalProfit
+        GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
+    EndIf
 
-    ; 2. Mở khóa toàn bộ giao diện và trả lại trạng thái nút Đăng Nhập
+    ; --- 2. RESET LỢI NHUẬN VÀ CHUỖI VỀ 0 (BẢO LƯU VOLUME) ---
+    $g_fTotalProfit = 0
+    $g_iCapitalLevel = 0
+    $g_iCustomSeqStep = 0
+    $g_iLastActiveRuleIndex = -1
+    For $i = 0 To UBound($g_aRuleLevels) - 1
+        $g_aRuleLevels[$i] = 0
+    Next
+
+    _UpdateProfitLabel()
+    _UpdateBalanceLabel()
+    _UpdateTotalVolumeLabel()
+
+    ; --- 3. LƯU LẠI VỐN MỚI VÀO FILE CONFIG ---
+    _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
+
     _SetControlsState(True)
+    GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
+    GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
 EndFunc
 Func _HaltProcess($sReason)
     _SendActivityLog("Stop", $sReason, Round(TimerDiff($g_hSessionTimer) / 1000, 0))
     $g_bIsRunning = False
-    $g_bManualStopped = True ; [QUAN TRỌNG] Đánh dấu là người dùng đã tắt
-
+    $g_bManualStopped = True
     _UpdateStatus($sReason)
-    _SetControlsState(True) ; Trả giao diện về trạng thái dừng (Nút Dừng sẽ xám lại) [cite: 1385]
 
-    ; Báo cho Tool Manager trạng thái STOP để nó không gửi lệnh START nữa
+    If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
+    $g_hTargetGameWin = 0
+    ;If $g_sWDSession <> "" Then
+        ;_WD_DeleteSession($g_sWDSession)
+        ;$g_sWDSession = ""
+    ;EndIf
+    ;ProcessClose("chromedriver.exe")
+
+    ; --- 1. CHỐT LỢI NHUẬN VÀO SỐ DƯ (CỘNG DỒN) ---
+    If $g_fTotalProfit <> 0 Then
+        $g_fInitialCapital += $g_fTotalProfit
+        GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
+    EndIf
+
+    ; --- 2. RESET LỢI NHUẬN VÀ CHUỖI VỀ 0 (BẢO LƯU VOLUME) ---
+    $g_fTotalProfit = 0
+    $g_iCapitalLevel = 0
+    $g_iCustomSeqStep = 0
+    $g_iLastActiveRuleIndex = -1
+    For $i = 0 To UBound($g_aRuleLevels) - 1
+        $g_aRuleLevels[$i] = 0
+    Next
+
+    _UpdateProfitLabel()
+    _UpdateBalanceLabel()
+    _UpdateTotalVolumeLabel()
+
+    ; --- 3. LƯU LẠI VỐN MỚI VÀO FILE CONFIG ---
+    _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
+
+    _SetControlsState(True)
+    GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
+    GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
+
     If $g_sMyTableID <> "" Then
         Local $sFile = @TempDir & "\status_" & $g_sMyTableID & ".ini"
         IniWrite($sFile, "Status", "State", "MANUAL_STOP")
@@ -2390,50 +2464,84 @@ Func _Core_SaveStat($sFile, $sSection, $iResult)
 EndFunc
 
 Func _CheckProfitLossTargets()
-    ; 1. KIỂM TRA TRONG RAM (TỐC ĐỘ TỨC THÌ)
     Local $bStopNow = False
     Local $sReason = ""
     Local $sStatus = ""
 
-    ; Check Lãi
     If $g_fTakeProfit > 0 And $g_fTotalProfit >= $g_fTakeProfit Then
         $bStopNow = True
         $sStatus = "DONE_WIN"
-        $sReason = "DA_CHOT_LAI"
+        $sReason = "ĐÃ CHẠM MỐC CHỐT LỜI"
     EndIf
 
-    ; Check Lỗ
     If $g_fStopLoss > 0 And $g_fTotalProfit <= -$g_fStopLoss Then
         $bStopNow = True
         $sStatus = "DONE_LOSS"
-        $sReason = "DA_CAT_LO"
+        $sReason = "ĐÃ CHẠM MỐC CẮT LỖ"
     EndIf
 
-    ; 2. NẾU ĐẠT -> NGẮT NGAY LẬP TỨC (KHÔNG CHỜ GHI FILE)
     If $bStopNow Then
-        ; >>> CẮT CẦU DAO TỔNG NGAY LẬP TỨC <<<
-        $g_bIsRunning = False
+        _UpdateStatus("⏸️ TẠM DỪNG: " & $sReason & " - Đang chờ lệnh...")
+        Local $iUserChoice = _ShowTargetPopup_Overlay($sStatus, $sReason)
 
-        ; Đổi tiêu đề cửa sổ ngay để người dùng biết (nhẹ hơn ghi file)
-        WinSetTitle($g_hGUI, "", "STOP: " & $sReason)
-
-        ; Reset nút bấm ngay để không bấm được nữa
-        _SetControlsState(True)
-
-        ; 3. BÂY GIỜ MỚI THONG THẢ GHI BÁO CÁO (Tool đã dừng rồi, ghi chậm cũng ko sao)
-        If $g_sMyTableID <> "" Then
-            Local $sFile = @TempDir & "\status_" & $g_sMyTableID & ".ini"
-            ; Ghi đè file trạng thái
-            IniWrite($sFile, "Status", "State", $sStatus)
-            IniWrite($sFile, "Status", "LaiLo", _FormatNumber($g_fTotalProfit))
+        ; =====================================================================
+        ; CHUYỂN LỢI NHUẬN VÀO SỐ DƯ NGAY LẬP TỨC CHO CẢ 2 TRƯỜNG HỢP
+        ; =====================================================================
+        If $g_fTotalProfit <> 0 Then
+            $g_fInitialCapital += $g_fTotalProfit
+            GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
         EndIf
 
-        Return True ; Trả về True để các hàm khác biết mà thoát
+        $g_fTotalProfit = 0 ; Reset riêng lợi nhuận (Volume tuyệt đối giữ nguyên)
+        ; =====================================================================
+
+        If $iUserChoice == 1 Then
+            ; --- CHỌN CHỐT NGHỈ ---
+            $g_bIsRunning = False
+
+            ; Thêm 2 dòng này để tự động đóng sảnh, trở về trang chủ
+            If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
+            $g_hTargetGameWin = 0
+
+            WinSetTitle($g_hGUI, "", "STOP: " & $sReason)
+            GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
+            GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
+            _SetControlsState(True)
+
+            _UpdateProfitLabel()
+            _UpdateBalanceLabel()
+            _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main)) ; Lưu số dư mới
+
+            If $g_sMyTableID <> "" Then
+                Local $sFile = @TempDir & "\status_" & $g_sMyTableID & ".ini"
+                IniWrite($sFile, "Status", "State", $sStatus)
+                IniWrite($sFile, "Status", "LaiLo", "0 VND")
+            EndIf
+            Return True
+
+        Else
+            ; --- CHỌN TIẾP TỤC ĐÁNH (VÀO CA MỚI, GIỮ NGUYÊN SẢNH) ---
+            $g_iCapitalLevel = 0
+            $g_iCustomSeqStep = 0
+            $g_iLastActiveRuleIndex = -1
+            For $i = 0 To UBound($g_aRuleLevels) - 1
+                $g_aRuleLevels[$i] = 0
+            Next
+
+            _UpdateProfitLabel()
+            _UpdateBalanceLabel()
+            _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main)) ; Lưu số dư mới
+
+            _UpdateStatus("▶️ Đã chốt Số dư. Bắt đầu ca đánh mới (Giữ nguyên Volume)...")
+            GUICtrlSetData($g_hButton_Start, "DỪNG TOOL")
+            GUICtrlSetBkColor($g_hButton_Start, 0xFF4141)
+
+            Return False
+        EndIf
     EndIf
 
     Return False
 EndFunc
-
 Func _RedrawHistory()
     ; Xóa sạch bảng cũ
     For $hLabel In $g_aLabel_History
@@ -2662,28 +2770,29 @@ Func _ProcessGUIMessages()
         Case $GUI_EVENT_CLOSE
             _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
             Exit
-
         Case $g_hCombo_AfterWinLogic
-             $g_bNeedAutoSave = True
-             $g_hAutoSaveTimer = TimerInit()
-
+            $g_bNeedAutoSave = True
+            $g_hAutoSaveTimer = TimerInit()
         Case $g_hButton_Start
             If $g_bIsRunning Then _StopProcess()
     EndSwitch
 
     ; =========================================================================
-    ; [CẢM BIẾN] KIỂM TRA SẢNH GAME BỊ TẮT THỦ CÔNG
+    ; [CẢM BIẾN] KIỂM TRA SẢNH GAME BỊ TẮT THỦ CÔNG (ĐỘ TRỄ 0.1s)
     ; =========================================================================
-    If $g_sWDSession <> "" And $g_hTargetGameWin <> 0 Then
-        If Not WinExists($g_hTargetGameWin) Then
-            If $g_bIsRunning Then
-                _UpdateStatus("⚠️ Sảnh game đã đóng! Đang dừng tool...")
+    If $g_sWDSession <> "" Then
+        ; Trường hợp 1: Sảnh game đã bị tắt mất
+        If $g_hTargetGameWin <> 0 And Not WinExists($g_hTargetGameWin) Then
+            _UpdateStatus("⚠️ Sảnh game đã đóng! Đang dừng tool...")
+            _StopProcess()
+        EndIf
+
+        ; Trường hợp 2: Trình duyệt bị tắt ngang (Chromedriver mất)
+        If Not ProcessExists("chromedriver.exe") And $g_hTargetGameWin = 0 Then
+            Local $sBtnText = GUICtrlRead($g_hButton_Start)
+            If $sBtnText == "ĐANG MỞ SẢNH..." Or $sBtnText == "ĐANG ĐĂNG NHẬP..." Or $sBtnText == "ĐANG MỞ WEB..." Then
+                _UpdateStatus("⚠️ Trình duyệt đã bị đóng đột ngột!")
                 _StopProcess()
-            Else
-                _UpdateStatus("⚠️ Sảnh game đã đóng! (Trang chủ vẫn mở)")
-                $g_hTargetGameWin = 0
-                $g_bManualStopped = True
-                _SetControlsState(True)
             EndIf
         EndIf
     EndIf
@@ -3119,37 +3228,40 @@ Func _LoadSessionState()
         _RedrawHistory()
         _UpdateTotalHandsLabel()
     EndIf
-    $g_iCapitalLevel = Number(IniRead($g_sIniPath, "SessionData", "CapitalLevel", "0"))
-    $g_fTotalProfit = Number(IniRead($g_sIniPath, "SessionData", "TotalProfit", "0"))
-    $g_iCycleStep = Number(IniRead($g_sIniPath, "SessionData", "CycleStep", "1"))
-    $g_iCurrentWinStreak = Number(IniRead($g_sIniPath, "SessionData", "CurrentWinStreak", "0"))
-    $g_iCurrentLossStreak = Number(IniRead($g_sIniPath, "SessionData", "CurrentLossStreak", "0"))
 
+    ; Ép lợi nhuận và chuỗi gấp thếp về 0 khi mới mở tool
+    $g_iCapitalLevel = 0
+    $g_fTotalProfit = 0
+
+    ; =========================================================================
+    ; [LOGIC VOLUME] CỘNG DỒN 24H (7:00 SÁNG NAY -> 7:00 SÁNG MAI)
+    ; =========================================================================
     Local $sCurrentGamingDate = @YEAR & "/" & @MON & "/" & @MDAY
     If Number(@HOUR) < 7 Then $sCurrentGamingDate = _DateAdd('d', -1, $sCurrentGamingDate)
+
     Local $sSavedDate = IniRead($g_sIniPath, "SessionData", "VolumeDate", "")
     If $sSavedDate = $sCurrentGamingDate Then
         $g_fTotalVolume = Number(IniRead($g_sIniPath, "SessionData", "TotalVolume", "0"))
     Else
-        $g_fTotalVolume = 0
+        $g_fTotalVolume = 0 ; Chỉ qua 7h sáng mới bị reset
     EndIf
+    ; =========================================================================
 
-    ; --- THÊM ĐOẠN NÀY ĐỂ NẠP MEMORY KHI MỞ TOOL ---
+    $g_iCycleStep = 1
+    $g_iCurrentWinStreak = 0
+    $g_iCurrentLossStreak = 0
+
     $g_sOM_MemoryData = IniRead($g_sIniPath, "SessionData", "OM_MemoryData", "|")
-
-    ; Cập nhật hiển thị số lượng ngay lập tức
     Local $iItems = 0
     If $g_sOM_MemoryData <> "|" Then
         $iItems = UBound(StringSplit($g_sOM_MemoryData, "|")) - 2
     EndIf
     GUICtrlSetData($g_hLabel_OM_Status, "Memory: " & $iItems & " records")
-    ; -----------------------------------------------
 
     _UpdateProfitLabel()
     _UpdateBalanceLabel()
     _UpdateTotalVolumeLabel()
 EndFunc
-
 ; ==============================================================================
 ; CÁC HÀM LẤY TỌA ĐỘ VÀ MÀU SẮC NHANH (SỬA ĐỔI: LẤY TỪ PHÍM S)
 ; ==============================================================================
@@ -4510,7 +4622,34 @@ Func _AutoLoginTK88_WebDriver($sUser, $sPass)
     Local $sKillAdsJS = "window.adKiller = setInterval(function() { var els = document.querySelectorAll('.close-btn, [class*=""close""], .el-dialog__wrapper, .v-modal, [class*=""overlay""]'); els.forEach(e => { try { e.click(); e.style.display = 'none'; e.style.opacity = '0'; } catch(err){} }); }, 200); setTimeout(function(){ clearInterval(window.adKiller); }, 15000);"
     _WD_ExecuteScript($g_sWDSession, $sKillAdsJS)
     Sleep(1000)
+Local $sKillAdsJS = "window.adKiller = setInterval(function() { var els = document.querySelectorAll('.close-btn, [class*=""close""], .el-dialog__wrapper, .v-modal, [class*=""overlay""]'); els.forEach(e => { try { e.click(); e.style.display = 'none'; e.style.opacity = '0'; } catch(err){} }); }, 200); setTimeout(function(){ clearInterval(window.adKiller); }, 15000);"
+    _WD_ExecuteScript($g_sWDSession, $sKillAdsJS)
+    Sleep(1000)
 
+    ; =================================================================
+    ; ---> CHÈN ĐOẠN F5 VÀ QUÉT VỐN VÀO ĐÂY (TRƯỚC KHI VÀO SẢNH) <---
+    ; =================================================================
+    _UpdateStatus("🔄 Đang tải lại trang chủ để lấy số dư chuẩn nhất...")
+    _WD_Action($g_sWDSession, "refresh")
+    Sleep(4000) ; Chờ load lại trang chủ
+
+    _UpdateStatus("Đang đọc số dư thực tế...")
+    Local $fSoDuMoi = _LaySoDuTrangChu()
+
+    If $fSoDuMoi > 0 Then
+        $g_fInitialCapital = $fSoDuMoi
+        GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
+
+        $g_fTotalProfit = 0
+        _UpdateProfitLabel()
+        _UpdateBalanceLabel()
+
+        _UpdateStatus("✅ Đã chốt VỐN CHUẨN: " & _FormatNumber($g_fInitialCapital) & " VND")
+        Sleep(1500)
+    Else
+        _UpdateStatus("⚠️ Không quét được số dư, dùng tạm vốn cũ!")
+        Sleep(1500)
+    EndIf
     _UpdateStatus("🎰 Đang gọi lệnh vào sảnh PP...")
     Local $sInitHandles = _WD_Window($g_sWDSession, "handles")
     Local $aInitList = StringRegExp($sInitHandles, '"([^"]+)"', 3)
@@ -4751,4 +4890,127 @@ Func _SilentAutoUpdate($sDownloadLink)
     ; Chạy file .bat ngầm và lập tức thoát Tool cũ
     Run(@ComSpec & ' /c "' & $sBatPath & '"', @TempDir, @SW_HIDE)
     Exit
+EndFunc
+; =====================================================================
+; HÀM BẮN THÔNG BÁO TELEGRAM
+; =====================================================================
+Func _SendTelegram($sMsg)
+    Local $sToken = "ĐIỀN_TOKEN_BOT_CỦA_BẠN_VÀO_ĐÂY" ; <--- Ví dụ: 123456789:ABCDefgh...
+    Local $sChatID = "ĐIỀN_CHAT_ID_CỦA_BẠN_VÀO_ĐÂY"  ; <--- Ví dụ: 987654321
+
+    If $sToken = "ĐIỀN_TOKEN_BOT_CỦA_BẠN_VÀO_ĐÂY" Or $sToken = "" Then Return ; Nếu chưa cài thì bỏ qua
+
+    ; Chuyển đổi nội dung tin nhắn để không bị lỗi Font khi gửi qua Web
+    Local $sEncodedMsg = ""
+    Local $aData = StringToASCIIArray($sMsg)
+    For $i = 0 To UBound($aData) - 1
+        $sEncodedMsg &= StringFormat("%%%02X", $aData[$i])
+    Next
+
+    Local $sUrl = "https://api.telegram.org/bot" & $sToken & "/sendMessage?chat_id=" & $sChatID & "&text=" & $sEncodedMsg
+    InetRead($sUrl, 1) ; Bắn lệnh đi (Chạy ngầm không làm đơ tool)
+EndFunc
+
+; =====================================================================
+; HÀM CỬA SỔ THÔNG BÁO TIÊU CHUẨN (SIÊU NHẸ - CHỐNG CRASH 100%)
+; =====================================================================
+Func _ShowTargetPopup_Overlay($sStatus, $sReason)
+    ; 1. Lấy tọa độ Tool chính để canh bảng thông báo ra giữa màn hình
+    Local $aMainPos = WinGetPos($g_hGUI)
+    Local $iW = 400
+    Local $iH = 200
+    Local $iX = -1
+    Local $iY = -1
+    If Not @error Then
+        $iX = $aMainPos[0] + ($aMainPos[2] - $iW) / 2
+        $iY = $aMainPos[1] + ($aMainPos[3] - $iH) / 2
+    EndIf
+
+    ; 2. Chuẩn bị nội dung và màu sắc
+    Local $sTitle = ($sStatus = "DONE_WIN") ? "🎉 CHÚC MỪNG: ĐẠT CHỐT LỜI" : "⚠️ CẢNH BÁO: CHẠM MỨC CẮT LỖ"
+    Local $sMessage = ($sStatus = "DONE_WIN") ? "Tuyệt vời! Đã đạt mục tiêu Chốt Lời." & @CRLF & "Sếp muốn nghỉ hay đánh tiếp?" : "Báo động! Đã chạm mức Cắt Lỗ." & @CRLF & "Sếp muốn nghỉ hay đánh tiếp?"
+    Local $iBgColor = ($sStatus = "DONE_WIN") ? 0xE6FEE6 : 0xFFE6E6 ; Nền xanh nhạt cho Thắng, đỏ nhạt cho Thua
+
+    ; 3. Tạo Bảng Popup tiêu chuẩn (Không dùng Web/GIF)
+    Local $hPopup = GUICreate($sTitle, $iW, $iH, $iX, $iY, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST, $g_hGUI)
+    GUISetBkColor($iBgColor, $hPopup)
+
+    ; 4. Thêm chữ thông báo
+    Local $hLabel = GUICtrlCreateLabel($sMessage, 20, 30, 360, 60, $SS_CENTER)
+    GUICtrlSetFont($hLabel, 12, 700)
+    If $sStatus = "DONE_WIN" Then
+        GUICtrlSetColor($hLabel, 0x008000) ; Chữ xanh lá
+    Else
+        GUICtrlSetColor($hLabel, 0xFF0000) ; Chữ đỏ
+    EndIf
+
+    ; 5. Tạo 2 nút bấm
+    Local $hBtnContinue = GUICtrlCreateButton("TIẾP TỤC ĐÁNH", 40, 110, 140, 45)
+    GUICtrlSetBkColor($hBtnContinue, 0x33CC33)
+    GUICtrlSetFont($hBtnContinue, 11, 700)
+    GUICtrlSetColor($hBtnContinue, 0xFFFFFF)
+
+    Local $hBtnStop = GUICtrlCreateButton("CHỐT NGHỈ", 220, 110, 140, 45)
+    GUICtrlSetBkColor($hBtnStop, 0xFF4141)
+    GUICtrlSetFont($hBtnStop, 11, 700)
+    GUICtrlSetColor($hBtnStop, 0xFFFFFF)
+
+    GUISetState(@SW_SHOW, $hPopup)
+
+    ; 6. Bắn Telegram NGAY LẬP TỨC
+    If $sStatus = "DONE_WIN" Then
+        _SendTelegram("🎉 Sếp ơi! AI Song Kiếm Hợp Bích đã húp đủ mục tiêu Chốt Lời. Đang đợi quyết định!")
+    Else
+        _SendTelegram("⚠️ Sếp ơi! AI Song Kiếm Hợp Bích chạm mức Cắt Lỗ. Vào kiểm tra sảnh ngay!")
+    EndIf
+
+    ; 7. Vòng lặp chờ lệnh (CÓ BẢO VỆ 5 PHÚT)
+    Local $iChoice = 1 ; Mặc định là Dừng
+    Local $hWaitTimer = TimerInit()
+
+    While 1
+        ; Dùng GUIGetMsg(1) để không xung đột với cửa sổ chính
+        Local $aMsg = GUIGetMsg(1)
+        Switch $aMsg[0]
+            Case $GUI_EVENT_CLOSE
+                ; Nếu khách bấm dấu X góc phải trên cùng
+                If $aMsg[1] = $hPopup Then
+                    $iChoice = 1
+                    ExitLoop
+                EndIf
+            Case $hBtnStop
+                $iChoice = 1
+                ExitLoop
+            Case $hBtnContinue
+                $iChoice = 0
+                ExitLoop
+        EndSwitch
+
+        ; Nếu quá 5 phút (300,000 ms) không ai bấm -> Tự động dừng
+        If TimerDiff($hWaitTimer) > 300000 Then
+            $iChoice = 1
+            _SendTelegram("💤 Đã quá 5 phút không thấy phản hồi. Tool tự động CHỐT NGHỈ để bảo toàn vốn an toàn!")
+            ExitLoop
+        EndIf
+        Sleep(50)
+    WEnd
+
+    ; 8. Xóa sổ cửa sổ thông báo an toàn
+    GUIDelete($hPopup)
+
+    Return $iChoice
+EndFunc
+Func _LaySoDuTrangChu()
+    If $g_sWDSession = "" Then Return 0
+
+    ; ĐOẠN JS NÀY SẼ ĐI TÌM CHỮ SỐ TRÊN WEB
+    ; Sếp đang làm cho TK88, thường class của nó là .money hoặc .balance
+    Local $sJS = "var el = document.querySelector('.money, .balance, [class*=""balance""], [class*=""money""]'); return el ? el.innerText : '0';"
+    Local $sBal = _WD_ExecuteScript($g_sWDSession, $sJS)
+
+    If @error Or $sBal = "" Then Return 0
+
+    ; Lọc bỏ chữ VND, dấu phẩy, dấu chấm... chỉ giữ lại số thuần
+    Local $sClean = StringRegExpReplace($sBal, "[^0-9]", "")
+    Return Number($sClean)
 EndFunc
