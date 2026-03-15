@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "1.0" ; Phiên bản hiện tại
+Global Const $g_sVersion = "1.1" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -1516,13 +1516,8 @@ Func _StartProcess()
     ; --- BIẾN CỜ: ĐÁNH DẤU LẦN ĐẦU TIÊN CHẠY ---
     ; True = Đang ở xu bài cũ (Chỉ nhìn, không đánh)
     ; False = Đã qua xu mới (Được phép đánh)
-Local $bIsOldShoe = (GUICtrlRead($g_hCheckbox_WaitNewShoe) = $GUI_CHECKED)
-
-    If $bIsOldShoe Then
-        _UpdateStatus(">>> KHỞI ĐỘNG: Chế độ An Toàn (Sẽ bỏ qua xu bài hiện tại)...")
-    Else
-        _UpdateStatus(">>> KHỞI ĐỘNG NGAY: Bắt đầu dò tín hiệu để đánh luôn!")
-    EndIf
+Local $bIsOldShoe = False
+_UpdateStatus(">>> KHỞI ĐỘNG NGAY: Bắt đầu dò tín hiệu để đánh luôn!")
     ; -------------------------------------------------------------------------
     ; VÒNG LẶP CHÍNH (QUẢN LÝ CÁC XU BÀI)
     ; -------------------------------------------------------------------------
@@ -1537,7 +1532,7 @@ Local $bIsOldShoe = (GUICtrlRead($g_hCheckbox_WaitNewShoe) = $GUI_CHECKED)
 
         _UpdateStatus("⏳ [BƯỚC 1] Đang tìm bàn (Max 60s)...")
 
-        While TimerDiff($hInitTimer) < $g_iTimeOutLimit And $g_bIsRunning
+        While $g_bIsRunning
             _ProcessGUIMessages()
 
             Local $sInitResult = _ScanAreaForResult()
@@ -1555,15 +1550,6 @@ Local $bIsOldShoe = (GUICtrlRead($g_hCheckbox_WaitNewShoe) = $GUI_CHECKED)
             EndIf
             Sleep(100)
         WEnd
-
-        ; Nếu 60s không thấy gì -> Reset -> Thử lại (Vẫn giữ cờ OldShoe)
-        If Not $bFoundFirstResult Then
-            _UpdateStatus("⛔ Time-out (Khởi tạo) -> RESET...")
-            _ResetAllStatsAndState()
-            Sleep(1000)
-            ContinueLoop
-        EndIf
-
 
         ; =====================================================================
         ; BƯỚC 2: GAME LOOP (VÒNG LẶP VÁN BÀI)
@@ -1705,7 +1691,7 @@ Func _WaitForNextHandResult_TimeOut($iMaxTimeMS)
 
     _UpdateStatus("⏳ Đang đợi kết quả mới (Timeout: " & Round($iMaxTimeMS/1000) & "s)...")
 
-    While TimerDiff($hTimer) < $iMaxTimeMS And $g_bIsRunning
+    While $g_bIsRunning
         _ProcessGUIMessages()
 
         Local $sRes = _ScanAreaForResult()
@@ -2096,10 +2082,17 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
             $g_iCustomSeqStep += 1
             _UpdateStatus("LOSS! (Dòng " & ($g_iLastActiveRuleIndex+1) & ") -> Gấp lên Lv " & $iNextLvl & " -> Sang bước " & $g_iCustomSeqStep)
         Else
-            $g_iCapitalLevel = $iNextLvl
-            _UpdateStatus("LOSS! -> Lên Lv " & $iNextLvl)
+                $g_iCapitalLevel = $iNextLvl
+                _UpdateStatus("LOSS! -> Lên Lv " & $iNextLvl)
+
+                ; >>> THÊM: CẮT CẦU KHI THUA VỀ LỆNH 0 (HẾT BẢNG VỐN) <<<
+                Local $bContinuous = (GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED)
+                If Not $bContinuous And $iNextLvl == 0 Then
+                    $g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
+                    _UpdateStatus("⛔ Thua hết bảng vốn -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
+                EndIf
+            EndIf
         EndIf
-    EndIf
 
     _RedrawHistory()
 EndFunc
@@ -3322,11 +3315,6 @@ Func _WaitForBettingTime_Safe()
         Local $iElapsed = Round(TimerDiff($hTimer) / 1000, 1)
         ToolTip("Đang tìm Giờ Cược: " & $iElapsed & "s", MouseGetPos()[0], MouseGetPos()[1] - 50)
 
-If TimerDiff($hTimer) > $g_iTimeOutLimit Then
-        _UpdateStatus("⛔ QUÁ GIỜ CƯỢC (" & Round($g_iTimeOutLimit/1000) & "s) -> Coi như hết bài.")
-        ToolTip("")
-        Return False
-EndIf
 Sleep(100)
     WEnd
 
@@ -3626,13 +3614,20 @@ EndFunc
 Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous)
     Local $aResult[3] = ["OBSERVE", "", 0]
 
-    ; [LOGIC CẮT CẦU]
-    Local $sHistoryRaw = _ArrayToString($g_aDisplayHistory, "", $g_iHistoryCutoffIndex)
+    ; [LOGIC CẮT CẦU - FIX LỖI NỐI ĐUÔI]
+    Local $sHistoryRaw = ""
+    If $g_iHistoryCutoffIndex < UBound($g_aDisplayHistory) Then
+        $sHistoryRaw = _ArrayToString($g_aDisplayHistory, "", $g_iHistoryCutoffIndex)
+    EndIf
     Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "")
 
     Local $bSepQLV = (GUICtrlRead($g_hCheckbox_SeparateQLV) = $GUI_CHECKED)
+
+    ; ---- SỬA LỖI ĐỌC DẤU ENTER XUỐNG DÒNG ----
     Local $sRulesRaw = StringStripWS(GUICtrlRead($g_hInput_CustomRules), 3)
-    Local $aLines = StringSplit($sRulesRaw, @CRLF, 1)
+    $sRulesRaw = StringReplace($sRulesRaw, @CRLF, @LF) ; Ép tất cả về chuẩn 1 kiểu xuống dòng
+    Local $aLines = StringSplit($sRulesRaw, @LF)
+    ; ------------------------------------------
 
     ; [AN TOÀN] Mở rộng mảng vốn
     If $bSepQLV And UBound($g_aRuleLevels) < ($aLines[0] + 5) Then
@@ -3677,6 +3672,12 @@ Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous)
                 ; Đã hết chuỗi mà chưa thắng -> Reset
                 $g_iLastActiveRuleIndex = -1
                 $g_iCustomSeqStep = 0
+
+                ; >>> THÊM: CẮT CẦU LỊCH SỬ KHI THUA HẾT CHUỖI <<<
+                If Not $bContinuous Then
+                    $g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
+                    _UpdateStatus("⛔ Thua hết chuỗi -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
+                EndIf
             EndIf
         EndIf
     EndIf
@@ -4256,10 +4257,14 @@ Func _Simulate3Roads($sHistory, $sNextBet)
     Return $aRet
 EndFunc
 
-; 4. Hàm điều khiển chính (AI Song Kiếm Hợp Bích)
 Func _Logic_MatrixAI($iTotalHands, $iBetUnit_Global, $bContinuous)
     Local $aResult[3] = ["OBSERVE", "", 0]
-    Local $sHistoryRaw = _ArrayToString($g_aDisplayHistory, "")
+
+    ; >>> FIX: ÉP AI CHỈ ĐỌC LỊCH SỬ TỪ ĐIỂM CẮT CẦU (QUÊN VÁN CŨ) <<<
+    Local $sHistoryRaw = ""
+    If $g_iHistoryCutoffIndex < UBound($g_aDisplayHistory) Then
+        $sHistoryRaw = _ArrayToString($g_aDisplayHistory, "", $g_iHistoryCutoffIndex)
+    EndIf
     Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Bỏ Hòa
 
     ; Kiểm tra Blacklist nếu có bật
