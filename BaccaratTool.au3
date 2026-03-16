@@ -2036,7 +2036,9 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
     Local $iCurrentLvl = ($bSepQLV And $g_iLastActiveRuleIndex > -1 And $g_iLastActiveRuleIndex < UBound($g_aRuleLevels)) ? $g_aRuleLevels[$g_iLastActiveRuleIndex] : $g_iCapitalLevel
 
     If $sActualResult = $sBetOn Then
-        ; >>> THẮNG (WIN) <<<
+        ; ==========================================
+        ; [--- KHI THẮNG (WIN) ---]
+        ; ==========================================
         $g_fTotalVolume += $g_fCurrentBet
         _UpdateTotalVolumeLabel()
         $g_fTotalProfit += ($sBetOn = "B") ? ($g_fCurrentBet * 0.95) : $g_fCurrentBet
@@ -2047,15 +2049,18 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
         Local $aQLV = _GetQLV_Params($iCurrentLvl)
         Local $iWinReturnLvl = $aQLV[2]
 
-        If $bSepQLV And $g_iLastActiveRuleIndex > -1 Then
-            If $g_iLastActiveRuleIndex < UBound($g_aRuleLevels) Then $g_aRuleLevels[$g_iLastActiveRuleIndex] = $iWinReturnLvl
-            $g_iLastActiveRuleIndex = -1
-            $g_iCustomSeqStep = 0
+        ; 1. Xử lý lưu mốc vốn (Chung hoặc Riêng)
+        If $bSepQLV And $g_iLastActiveRuleIndex > -1 And $g_iLastActiveRuleIndex < UBound($g_aRuleLevels) Then
+            $g_aRuleLevels[$g_iLastActiveRuleIndex] = $iWinReturnLvl
         Else
             $g_iCapitalLevel = $iWinReturnLvl
         EndIf
 
-        ; >>> LOGIC NỐI ĐUÔI HOẶC CẮT CẦU LỊCH SỬ TẠI ĐÂY <<<
+        ; 2. Thắng là xong nhiệm vụ -> Xóa trí nhớ về bước đánh, cắt chuỗi
+        $g_iLastActiveRuleIndex = -1
+        $g_iCustomSeqStep = 0
+
+        ; 3. Cắt cầu hoặc Nối đuôi khi thắng
         Local $bContinuous = (GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED)
         If Not $bContinuous Then
             $g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
@@ -2066,7 +2071,9 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
         EndIf
 
     Else
-        ; >>> THUA (LOSS) <<<
+        ; ==========================================
+        ; [--- KHI THUA (LOSS) ---]
+        ; ==========================================
         $g_fTotalVolume += $g_fCurrentBet
         _UpdateTotalVolumeLabel()
         $g_fTotalProfit -= $g_fCurrentBet
@@ -2077,22 +2084,28 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
         Local $aQLV = _GetQLV_Params($iCurrentLvl)
         Local $iNextLvl = $aQLV[3]
 
-        If $bSepQLV And $g_iLastActiveRuleIndex > -1 Then
-            If $g_iLastActiveRuleIndex < UBound($g_aRuleLevels) Then $g_aRuleLevels[$g_iLastActiveRuleIndex] = $iNextLvl
-            $g_iCustomSeqStep += 1
-            _UpdateStatus("LOSS! (Dòng " & ($g_iLastActiveRuleIndex+1) & ") -> Gấp lên Lv " & $iNextLvl & " -> Sang bước " & $g_iCustomSeqStep)
+        ; 1. Xử lý lưu mốc vốn để đánh lệnh tiếp theo (Chung hoặc Riêng)
+        If $bSepQLV And $g_iLastActiveRuleIndex > -1 And $g_iLastActiveRuleIndex < UBound($g_aRuleLevels) Then
+            $g_aRuleLevels[$g_iLastActiveRuleIndex] = $iNextLvl
         Else
-                $g_iCapitalLevel = $iNextLvl
-                _UpdateStatus("LOSS! -> Lên Lv " & $iNextLvl)
-
-                ; >>> THÊM: CẮT CẦU KHI THUA VỀ LỆNH 0 (HẾT BẢNG VỐN) <<<
-                Local $bContinuous = (GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED)
-                If Not $bContinuous And $iNextLvl == 0 Then
-                    $g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-                    _UpdateStatus("⛔ Thua hết bảng vốn -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
-                EndIf
-            EndIf
+            $g_iCapitalLevel = $iNextLvl
         EndIf
+
+        ; 2. LUÔN LUÔN TIẾN TỚI BƯỚC TIẾP THEO TRONG CHUỖI (Bất kể QLV chung hay riêng)
+        If $g_iLastActiveRuleIndex > -1 Then
+            $g_iCustomSeqStep += 1
+            _UpdateStatus("LOSS! (Dòng " & ($g_iLastActiveRuleIndex+1) & ") -> Lên Lv " & $iNextLvl & " -> Sang bước " & $g_iCustomSeqStep)
+        Else
+            _UpdateStatus("LOSS! -> Lên Lv " & $iNextLvl)
+        EndIf
+
+        ; 3. Nếu gãy sạch tiền trong bảng vốn -> Ép cắt cầu
+        Local $bContinuous = (GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED)
+        If Not $bContinuous And $iNextLvl == 0 Then
+            $g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
+            _UpdateStatus("⛔ Thua hết bảng vốn -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
+        EndIf
+    EndIf
 
     _RedrawHistory()
 EndFunc
@@ -3730,8 +3743,7 @@ Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous)
                   $aResult[1] = $sFirstChar
                   $aResult[2] = $aQLV[1]
 
-                  ; Khóa dòng này lại để theo dõi
-                  If $bSepQLV Then $g_iLastActiveRuleIndex = $i - 1
+                  $g_iLastActiveRuleIndex = $i - 1
 
                   _UpdateStatus("🎯 Khớp dòng " & $i & ": [" & $sWaitSig & "] -> Bắt đầu dây (Bước 1): " & $sFirstChar)
                   Return $aResult
