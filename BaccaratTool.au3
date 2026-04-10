@@ -197,6 +197,15 @@ Func _Main()
 		MsgBox(48, "Thông báo", "Tool đang được mở rồi! Vui lòng kiểm tra dưới thanh Taskbar.")
 		Exit
 	EndIf
+
+	; ---> NHÚNG CHROMEDRIVER VÀO BỤNG FILE EXE TẠI ĐÂY <---
+	; 1. Tắt con Chrome cũ nếu nó đang chạy ngầm để tránh lỗi ghi đè
+	ProcessClose("chromedriver.exe")
+	Sleep(500)
+	; 2. Nhét file chromedriver.exe vào file gốc. Khi khách mở tool, nó sẽ tự động nhả file này ra thư mục hiện tại.
+	FileInstall("chromedriver.exe", @ScriptDir & "\chromedriver.exe", 1)
+	; --------------------------------------------------------
+
 	_CheckForUpdates()
 	Local $aLicenseInfo = _CheckLicenseOnline()
 	Local $sStatus = $aLicenseInfo[0]
