@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "2.1" ; Phiên bản hiện tại
+Global Const $g_sVersion = "2.2" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -36,6 +36,7 @@ Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main
 Global Const $g_iTimeOutLimit = 45000
 Global $g_bIsRunning = False
 Global $g_sIniPath
+Global $g_hCheckbox_DuKich
 Global $g_bIsFormatting = False
 Global $g_sInstanceIdentifier
 Global $g_bConfigUnlocked = False
@@ -224,40 +225,40 @@ Func _Main()
 	_CheckForUpdates()
 	; ĐOẠN CHECK BẢN QUYỀN TRONG HÀM _Main() CẦN SỬA LẠI NHƯ SAU:
 
-    ; Lấy mã máy trước và gắn vào biến toàn cục luôn cho dễ xài
-    $g_sHWID = _GetHardwareID()
+	; Lấy mã máy trước và gắn vào biến toàn cục luôn cho dễ xài
+	$g_sHWID = _GetHardwareID()
 
-    ; Truyền mã máy vào hàm check
-    Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
-    Local $sStatus = $aLicenseInfo[0]
-    Local $sData = $aLicenseInfo[1]
+	; Truyền mã máy vào hàm check
+	Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
+	Local $sStatus = $aLicenseInfo[0]
+	Local $sData = $aLicenseInfo[1]
 
-    If $sStatus = "OK" Then
-        $g_sExpiryDate = $sData
-    ElseIf $sStatus = "EXPIRED" Then
+	If $sStatus = "OK" Then
+		$g_sExpiryDate = $sData
+	ElseIf $sStatus = "EXPIRED" Then
 
-        ; 1. Gọi bảng thông báo màu hồng (Nếu khách thanh toán QR thành công, hàm sẽ trả về True)
-        If _ShowExpiryDialog($sData, $g_sHWID) Then
+		; 1. Gọi bảng thông báo màu hồng (Nếu khách thanh toán QR thành công, hàm sẽ trả về True)
+		If _ShowExpiryDialog($sData, $g_sHWID) Then
 
-            ; 2. Đã thanh toán xong! Update lại biến Ngày hết hạn mới từ Server
-            ; (Đã điền biến $g_sHWID vào trong ngoặc để hết báo lỗi)
-            Local $aNewCheck = _CheckLicenseOnline($g_sHWID)
-            $g_sExpiryDate = $aNewCheck[1]
+			; 2. Đã thanh toán xong! Update lại biến Ngày hết hạn mới từ Server
+			; (Đã điền biến $g_sHWID vào trong ngoặc để hết báo lỗi)
+			Local $aNewCheck = _CheckLicenseOnline($g_sHWID)
+			$g_sExpiryDate = $aNewCheck[1]
 
-            ; Hiện thông báo ăn mừng
-            MsgBox(64, "Kích Hoạt Thành Công", "Thanh toán thành công! Chúc sếp một ngày cược rực rỡ.")
-        Else
-            Exit ; Nếu khách bấm dấu X tắt bảng màu hồng đi thì thoát tool
-        EndIf
+			; Hiện thông báo ăn mừng
+			MsgBox(64, "Kích Hoạt Thành Công", "Thanh toán thành công! Chúc sếp một ngày cược rực rỡ.")
+		Else
+			Exit ; Nếu khách bấm dấu X tắt bảng màu hồng đi thì thoát tool
+		EndIf
 
-    Else
-        _ShowActivationDialog($g_sHWID)
-        Exit
-    EndIf
+	Else
+		_ShowActivationDialog($g_sHWID)
+		Exit
+	EndIf
 
-    ; Tiếp tục chạy Tool bình thường
-    _CreateGUI($g_sExpiryDate)
-    _MainLoop()
+	; Tiếp tục chạy Tool bình thường
+	_CreateGUI($g_sExpiryDate)
+	_MainLoop()
 EndFunc   ;==>_Main
 
 Func _RunMainApp($sExpiryDate)
@@ -294,13 +295,13 @@ Func _CreateGUI($sExpiryDate)
 
 	GUICtrlCreateTabItem("") ; Đóng khối Tab
 
-    ; Lấy số giây còn lại từ máy chủ
-    Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
-    $g_iTotalSecondsLeft = Number($aLicenseInfo[2])
+	; Lấy số giây còn lại từ máy chủ
+	Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
+	$g_iTotalSecondsLeft = Number($aLicenseInfo[2])
 
-    ; Kích hoạt hàm TickTock đếm ngược từng giây
-    AdlibRegister("_TickTock", 1000)
-    ; ===================================================================
+	; Kích hoạt hàm TickTock đếm ngược từng giây
+	AdlibRegister("_TickTock", 1000)
+	; ===================================================================
 
 	_LoadSettings()
 	_UpdateLicenseInfoLabels($sExpiryDate)
@@ -471,24 +472,24 @@ Func _MainLoop()
 			Case $g_hCheckbox_ToggleScan
 				_ToggleScanHotkey()
 			Case $g_hCheckbox_ContinuousMode
-			If GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED Then
-				GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED) ; Bỏ tích
-				GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_DISABLE)   ; Làm mờ đi
-			Else
-				GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_ENABLE)    ; Sáng lại
-			EndIf
-			$g_bNeedAutoSave = True
-			$g_hAutoSaveTimer = TimerInit()
+				If GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED Then
+					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED) ; Bỏ tích
+					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_DISABLE) ; Làm mờ đi
+				Else
+					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_ENABLE) ; Sáng lại
+				EndIf
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
 
-		Case $g_hCheckbox_ReverseLogic
-			If GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED Then
-				GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED) ; Bỏ tích
-				GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_DISABLE)   ; Làm mờ đi
-			Else
-				GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_ENABLE)    ; Sáng lại
-			EndIf
-			$g_bNeedAutoSave = True
-			$g_hAutoSaveTimer = TimerInit()
+			Case $g_hCheckbox_ReverseLogic
+				If GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED Then
+					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED) ; Bỏ tích
+					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_DISABLE) ; Làm mờ đi
+				Else
+					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_ENABLE) ; Sáng lại
+				EndIf
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
 			Case $g_hButton_GetBankerPos
 				_GetCoords_Fast($g_hInput_BankerX, $g_hInput_BankerY)
 			Case $g_hButton_GetPlayerPos
@@ -581,6 +582,11 @@ Func _CreateGroup_BettingMethod()
 	$g_hCheckbox_ReverseLogic = GUICtrlCreateCheckbox("Chế độ Bám Chuỗi (Win đánh tiếp, Thua cắt)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
 	GUICtrlSetColor(-1, 0xFF0000) ; Giữ màu đỏ cho Bám chuỗi để cảnh báo
+
+	$y += 25
+	$g_hCheckbox_DuKich = GUICtrlCreateCheckbox("Bật chiến thuật Du Kích (Thắng nghỉ 5p, Thua bỏ 10 tay)", $x_label, $y, 350, 20)
+	GUICtrlSetFont(-1, 9, 600)
+	GUICtrlSetColor(-1, 0x008000) ; Chữ màu xanh lá
 EndFunc   ;==>_CreateGroup_BettingMethod
 Func _CreateGroup_QLV_On_Main()
 	_CreateStyledGroup("Cấu Hình Quản Lý Vốn", 10, 590, 320, 240)
@@ -935,7 +941,7 @@ Func _CreateGroup_InfoAndTargets()
 	$g_hInput_StopLoss = GUICtrlCreateInput("0", $x + 245, $y - 2, 145, 22)
 	GUICtrlSetBkColor($g_hInput_StopLoss, 0xE0FFFF)
 
-$y += 40
+	$y += 40
 	$g_hLabel_Time = GUICtrlCreateLabel("00:00:00", $x, $y, $w, 35, BitOR($SS_CENTER, $SS_SUNKEN))
 	GUICtrlSetFont($g_hLabel_Time, 14, 800) ; Cỡ chữ 14 vừa vặn cho Thứ + Ngày + Giờ
 	GUICtrlSetBkColor($g_hLabel_Time, 0xF0F8FF)
@@ -1893,30 +1899,25 @@ Func _DecideNextAction()
 	; 1. Kiểm tra Chốt Lãi / Cắt Lỗ NGAY LẬP TỨC
 	If _CheckProfitLossTargets() Then Return $aStop
 
-	; ---> ĐOẠN KHÓA TAY CƯỢC DU KÍCH VÀ KHUNG GIỜ <---
-	; Chỉ cho phép đánh từ 7:00 sáng đến 20:59 tối
-	Local $iHour = Number(@HOUR)
-	If $iHour < 7 Or $iHour >= 21 Then
-		_UpdateStatus("⏳ NGOÀI GIỜ: Chỉ đánh từ 7h-21h. Đang ghi nhận cầu chờ đến giờ...")
-		Return $aStop
-	EndIf
-
-	; Xử lý nghỉ 5-10 phút khi Thắng
-	If $g_iWaitTimeEnd_DuKich <> 0 Then
-		Local $iElapsed = TimerDiff($g_iWaitTimeEnd_DuKich)
-		If $iElapsed < $g_iWaitDuration_DuKich Then
-			_UpdateStatus("⏳ DU KÍCH: Thắng! Nghỉ giải lao còn " & Round(($g_iWaitDuration_DuKich - $iElapsed) / 1000) & " giây...")
-			Return $aStop
-		Else
-			$g_iWaitTimeEnd_DuKich = 0
-			_UpdateStatus("✅ DU KÍCH: Đã nghỉ xong 5-10 phút. Bắt đầu ngắm cầu!")
+	; Kiểm tra xem sếp có bật chế độ Du Kích không
+	If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
+		; Xử lý nghỉ 5-10 phút khi Thắng
+		If $g_iWaitTimeEnd_DuKich <> 0 Then
+			Local $iElapsed = TimerDiff($g_iWaitTimeEnd_DuKich)
+			If $iElapsed < $g_iWaitDuration_DuKich Then
+				_UpdateStatus("⏳ DU KÍCH: Thắng! Nghỉ giải lao còn " & Round(($g_iWaitDuration_DuKich - $iElapsed) / 1000) & " giây...")
+				Return $aStop
+			Else
+				$g_iWaitTimeEnd_DuKich = 0
+				_UpdateStatus("✅ DU KÍCH: Đã nghỉ xong 5-10 phút. Bắt đầu ngắm cầu!")
+			EndIf
 		EndIf
-	EndIf
 
-	; Xử lý bỏ qua 10 tín hiệu khi Thua
-	If $g_iSkipSignalsCount_DuKich > 0 Then
-		_UpdateStatus("⚠️ DU KÍCH: Thua! Bỏ qua " & $g_iSkipSignalsCount_DuKich & " tín hiệu tiếp theo...")
-		Return $aStop
+		; Xử lý bỏ qua 10 tín hiệu khi Thua
+		If $g_iSkipSignalsCount_DuKich > 0 Then
+			_UpdateStatus("⚠️ DU KÍCH: Thua! Bỏ qua " & $g_iSkipSignalsCount_DuKich & " tín hiệu tiếp theo...")
+			Return $aStop
+		EndIf
 	EndIf
 	; --------------------------------------------------
 	Local $iTotalHands = UBound($g_aDisplayHistory)
@@ -2075,10 +2076,11 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 		_UpdateStrategyStats(1)
 
 		; ---> THÊM ĐOẠN NÀY DÀNH CHO DU KÍCH <---
-		$g_iWaitTimeEnd_DuKich = TimerInit()
-		$g_iWaitDuration_DuKich = Random(300000, 600000, 1) ; Nghỉ ngẫu nhiên từ 5 phút (300k) đến 10 phút (600k ms)
+		If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
+			$g_iWaitTimeEnd_DuKich = TimerInit()
+			$g_iWaitDuration_DuKich = Random(300000, 600000, 1) ; Nghỉ ngẫu nhiên từ 5-10 phút
+		EndIf
 		; ---------------------------------------
-
 		If $bReverseLogic Then
 			; LOGIC BÁM CHUỖI: Thắng -> Đi tiếp chuỗi (Lấy LUÔN LUÔN theo CỘT THẮNG của QLV)
 			If $g_iLastActiveRuleIndex > -1 Then $g_iCustomSeqStep += 1
@@ -2103,9 +2105,10 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 		_UpdateStrategyStats(0)
 
 		; ---> THÊM ĐOẠN NÀY DÀNH CHO DU KÍCH <---
-		$g_iSkipSignalsCount_DuKich = 10
+		If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
+			$g_iSkipSignalsCount_DuKich = 10
+		EndIf
 		; ---------------------------------------
-
 		If $bReverseLogic Then
 			; LOGIC BÁM CHUỖI: Thua -> CẮT CẦU (Lấy LUÔN LUÔN theo CỘT THUA của QLV)
 			$g_iLastActiveRuleIndex = -1
@@ -3015,19 +3018,19 @@ EndFunc   ;==>_GetHardwareID
 
 ; 1. HÀM CHECK BẢN QUYỀN (ĐÃ THÊM TÍNH NĂNG XÓA CACHE ĐỂ TOOL TỰ MỞ KHI NHẬN TIỀN)
 Func _CheckLicenseOnline($sHWID)
-    Local $sUrl = $g_sAppsScriptBaseURL & "?action=check_init&hwid=" & $sHWID & "&nocache=" & TimerInit()
-    Local $sData = BinaryToString(InetRead($sUrl, 3), 4)
+	Local $sUrl = $g_sAppsScriptBaseURL & "?action=check_init&hwid=" & $sHWID & "&nocache=" & TimerInit()
+	Local $sData = BinaryToString(InetRead($sUrl, 3), 4)
 
-    Local $oJson = Json_Decode($sData)
-    Local $sStatus = Json_Get($oJson, "[status]")
-    Local $sExpiry = Json_Get($oJson, "[expiry]")
+	Local $oJson = Json_Decode($sData)
+	Local $sStatus = Json_Get($oJson, "[status]")
+	Local $sExpiry = Json_Get($oJson, "[expiry]")
 
-    ; [MỚI] Lấy số giây còn lại
-    Local $iRemainingSecs = Number(Json_Get($oJson, "[remaining_seconds]"))
+	; [MỚI] Lấy số giây còn lại
+	Local $iRemainingSecs = Number(Json_Get($oJson, "[remaining_seconds]"))
 
-    Local $aResult[3] = [$sStatus, $sExpiry, $iRemainingSecs]
-    Return $aResult
-EndFunc
+	Local $aResult[3] = [$sStatus, $sExpiry, $iRemainingSecs]
+	Return $aResult
+EndFunc   ;==>_CheckLicenseOnline
 Func _ShowUpdateDialog($sNewVersion)
 	Local $sMsg = "Đã có phiên bản mới!" & @CRLF & @CRLF & _
 			"Phiên bản hiện tại của bạn: " & $g_sVersion & @CRLF & _
@@ -3095,120 +3098,186 @@ Func _ShowActivationDialog($sHWID)
 	GUIDelete($hActivationGUI)
 EndFunc   ;==>_ShowActivationDialog
 ; =====================================================================
-; BẢNG THÔNG BÁO TÌNH CẢM - KÊU GỌI ỦNG HỘ BẢO TRÌ
+; BẢNG THÔNG BÁO TẠM DỪNG BẢO TRÌ (GIAO DIỆN CHUYÊN NGHIỆP)
 ; =====================================================================
 Func _ShowExpiryDialog($sExpiryDate, $sHWID)
-    Local $hExpiryGUI = GUICreate("Hệ Thống Tạm Dừng", 520, 260, -1, -1, $WS_SYSMENU, $WS_EX_TOPMOST)
-    GUISetBkColor(0xFFFAFA, $hExpiryGUI) ; Màu nền trắng hồng nhẹ nhàng
+	Local $hExpiryGUI = GUICreate("THÔNG BÁO HỆ THỐNG", 550, 300, -1, -1, BitOR($WS_POPUP, $WS_BORDER), $WS_EX_TOPMOST)
+	GUISetBkColor(0x111111, $hExpiryGUI) ; Nền Đen Nhám (Dark Theme)
 
-    GUICtrlCreateLabel("⏳ Tool cần được bảo trì để chạy mượt mà cho ngày mới!", 20, 20, 480, 25, $SS_CENTER)
-    GUICtrlSetFont(-1, 12, 700)
-    GUICtrlSetColor(-1, 0x0000FF) ; Màu xanh tin tưởng
+	; Viền nổi 3D (Đã thêm DISABLE để không chặn click chuột)
+	Local $hBorder = GUICtrlCreateLabel("", 5, 5, 540, 290, $SS_SUNKEN)
+	GUICtrlSetBkColor($hBorder, 0x111111)
+	GUICtrlSetState($hBorder, $GUI_DISABLE)
 
-    ; Lời văn kêu gọi sự thông cảm
-    Local $sMessage = "Để duy trì server ổn định, update thuật toán mới mỗi ngày và " & @CRLF & _
-                      "hỗ trợ team kỹ thuật có thêm động lực làm việc." & @CRLF & _
-                      "Rất mong sếp ủng hộ team một ly cafe nhỏ nhé! ❤️"
-    GUICtrlCreateLabel($sMessage, 20, 60, 480, 60, $SS_CENTER)
-    GUICtrlSetFont(-1, 11, 400)
-    GUICtrlSetColor(-1, 0x333333)
+	GUICtrlCreateLabel("HỆ THỐNG ĐANG BẢO TRÌ & NÂNG CẤP", 20, 25, 510, 30, $SS_CENTER)
+	GUICtrlSetFont(-1, 16, 800)
+	GUICtrlSetColor(-1, 0xFFD700) ; Chữ Vàng Gold Sang Trọng
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-    Local $hBtnQR = GUICtrlCreateButton("☕ ỦNG HỘ TEAM MỞ KHÓA NGAY" & @CRLF & "(Hệ thống duyệt tự động 24/7)", 120, 140, 280, 55, $BS_MULTILINE)
-    GUICtrlSetBkColor(-1, 0xFF4500) ; Nút màu cam đỏ nhiệt huyết
-    GUICtrlSetColor(-1, 0xFFFFFF)
-    GUICtrlSetFont(-1, 11, 700)
+	; Lời văn kêu gọi sự thông cảm và nhận góp ý
+	Local $sMessage = "Để duy trì máy chủ hoạt động ổn định và cập nhật thuật toán liên tục," & @CRLF & _
+			"nhà phát triển rất cần sự ủng hộ từ bạn." & @CRLF & _
+			"Nếu bạn cần tích hợp thêm tính năng mới, đừng ngần ngại yêu cầu nhé!"
+	GUICtrlCreateLabel($sMessage, 20, 75, 510, 60, $SS_CENTER)
+	GUICtrlSetFont(-1, 11, 400)
+	GUICtrlSetColor(-1, 0xEEEEEE) ; Chữ trắng bạc
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-    GUISetState(@SW_SHOW, $hExpiryGUI)
-    Local $iResult = 0
+	; Nút bấm đã được bỏ Multiline và làm to chữ để nằm chính giữa trung tâm
+	Local $hBtnQR = GUICtrlCreateButton("🚀 TIẾN HÀNH ỦNG HỘ & MỞ KHÓA TRUY CẬP 🚀", 40, 160, 470, 60)
+	GUICtrlSetBkColor(-1, 0xCC0000) ; Đỏ đô hầm hố
+	GUICtrlSetColor(-1, 0xFFFFFF)
+	GUICtrlSetFont(-1, 13, 800) ; Cỡ chữ 13 to hơn
 
-    While 1
-        Switch GUIGetMsg()
-            Case $GUI_EVENT_CLOSE
-                ExitLoop
-            Case $hBtnQR
-                GUIDelete($hExpiryGUI)
-                Local $iDynamicPrice = _GetDynamicPrice() ; Âm thầm lấy giá sếp cài trên Google
-                If _ShowDailyPaymentDialog($sHWID, $iDynamicPrice) Then
-                    $iResult = 1
-                EndIf
-                ExitLoop
-        EndSwitch
-    WEnd
+	Local $hBtnExit = GUICtrlCreateButton("Thoát", 220, 240, 110, 35)
+	GUICtrlSetBkColor(-1, 0x555555)
+	GUICtrlSetColor(-1, 0xFFFFFF)
+	GUICtrlSetFont(-1, 10, 700)
 
-    If $iResult == 0 Then Exit
-    Return True
-EndFunc
+	GUISetState(@SW_SHOW, $hExpiryGUI)
+	Local $iResult = 0
+
+	; Sử dụng GUIGetMsg(1) để bắt click chuẩn xác không bị trượt
+	While 1
+		Local $aMsg = GUIGetMsg(1)
+		Select
+			Case $aMsg[0] = $GUI_EVENT_CLOSE Or $aMsg[0] = $hBtnExit
+				ExitLoop
+			Case $aMsg[0] = $hBtnQR
+				GUIDelete($hExpiryGUI)
+				Local $iDynamicPrice = _GetDynamicPrice()
+				If _ShowDailyPaymentDialog($sHWID, $iDynamicPrice) Then
+					$iResult = 1
+				EndIf
+				ExitLoop
+		EndSelect
+	WEnd
+
+	If $iResult == 0 Then Exit
+	Return True
+EndFunc   ;==>_ShowExpiryDialog
 
 ; =====================================================================
-; GIAO DIỆN QUÉT MÃ QR - LỜI VĂN MỜI CAFE
+; GIAO DIỆN QUÉT MÃ QR VIP - HẦM HỐ 3D (ĐÃ BỎ KHUNG TRẮNG)
 ; =====================================================================
 Func _ShowDailyPaymentDialog($sHWID, $iAmount)
-    Local $hPayGUI = GUICreate("Ủng Hộ Quỹ Bảo Trì Tool", 420, 480, -1, -1, $WS_SYSMENU, $WS_EX_TOPMOST)
-    GUISetBkColor(0xFFFFFF, $hPayGUI)
+	; Đổi thành $WS_POPUP để xóa thanh tiêu đề trắng của Windows
+	Local $hPayGUI = GUICreate("CỔNG THANH TOÁN TỰ ĐỘNG", 500, 680, -1, -1, $WS_POPUP, $WS_EX_TOPMOST)
+	GUISetBkColor(0x0A0A0A, $hPayGUI) ; Đen sâu thăm thẳm
 
-    GUICtrlCreateLabel("☕ MỜI CAFE TEAM QUA MÃ QR BÊN DƯỚI", 10, 15, 400, 20, $SS_CENTER)
-    GUICtrlSetFont(-1, 12, 700)
-    GUICtrlSetColor(-1, 0x008000)
+	; Tạo viền bao quanh toàn bộ cửa sổ
+	Local $hMainBorder = GUICtrlCreateLabel("", 0, 0, 500, 680, $SS_SUNKEN)
+	GUICtrlSetState($hMainBorder, $GUI_DISABLE)
 
-    ; === ĐÃ NHẬP SẴN THÔNG TIN CỦA SẾP ===
-    Local $sBankId = "MB"
-    Local $sAccountNo = "0986071012"
-    Local $sAccountName = "NGUYEN NGOC DUY"
-    Local $sContent = "GIAHAN " & StringRight($sHWID, 6)
+	; Nút X tắt ở góc phải trên cùng
+	Local $hBtnCloseX = GUICtrlCreateButton("X", 460, 10, 30, 30)
+	GUICtrlSetBkColor($hBtnCloseX, 0xCC0000)
+	GUICtrlSetColor($hBtnCloseX, 0xFFFFFF)
+	GUICtrlSetFont($hBtnCloseX, 12, 800)
 
-    Local $sContentUrl = StringReplace($sContent, " ", "%20")
-    Local $sNameUrl = StringReplace($sAccountName, " ", "%20")
+	; Khung Header 3D Dạ Quang
+	Local $hHeaderBorder = GUICtrlCreateLabel("", 10, 10, 440, 50, $SS_SUNKEN)
+	GUICtrlSetBkColor($hHeaderBorder, 0x1C1C1C)
+	GUICtrlSetState($hHeaderBorder, $GUI_DISABLE)
 
-    Local $sQrUrl = "https://qr.sepay.vn/img?bank=" & $sBankId & "&acc=" & $sAccountNo & "&amount=" & $iAmount & "&des=" & $sContentUrl & "&name=" & $sNameUrl
+	GUICtrlCreateLabel("💎 MÃ QR ỦNG HỘ NHÀ PHÁT TRIỂN 💎", 15, 22, 430, 25, $SS_CENTER)
+	GUICtrlSetFont(-1, 14, 800, "Segoe UI")
+	GUICtrlSetColor(-1, 0x00FFFF) ; Cyan dạ quang
+	GUICtrlSetBkColor(-1, 0x1C1C1C)
 
-    Local $oIE = ObjCreate("Shell.Explorer.2")
-    Local $hActiveX = GUICtrlCreateObj($oIE, 60, 50, 300, 300)
-    $oIE.navigate("about:blank")
-    While $oIE.readyState <> 4
-        Sleep(50)
-    WEnd
-    Local $sHtml = "<html><body style='margin:0;padding:0;overflow:hidden;text-align:center;' scroll='no'><img src='" & $sQrUrl & "' width='300' height='300'></body></html>"
-    $oIE.document.write($sHtml)
-    $oIE.document.close()
+	; KHUNG VIỀN MÃ QR 3D SẮC NÉT
+	Local $hQRBorder = GUICtrlCreateLabel("", 85, 75, 330, 330, $SS_SUNKEN)
+	GUICtrlSetBkColor($hQRBorder, 0xFFD700) ; Khung viền Vàng Gold
+	GUICtrlSetState($hQRBorder, $GUI_DISABLE)
 
-    GUICtrlCreateLabel("Chi phí ủng hộ: " & _FormatNumber($iAmount) & " VNĐ", 10, 365, 400, 25, $SS_CENTER)
-    GUICtrlSetFont(-1, 14, 700)
-    GUICtrlSetColor(-1, 0xFF0000)
+	Local $sBankId = "MB"
+	Local $sAccountNo = "0986071012"
+	Local $sAccountName = "NGUYEN NGOC DUY"
+	Local $sContent = "GIAHAN " & StringRight($sHWID, 6)
 
-    GUICtrlCreateLabel("Nội dung bắt buộc: " & $sContent, 10, 395, 400, 20, $SS_CENTER)
-    GUICtrlSetFont(-1, 11, 700)
+	Local $sContentUrl = StringReplace($sContent, " ", "%20")
+	Local $sNameUrl = StringReplace($sAccountName, " ", "%20")
+	Local $sQrUrl = "https://qr.sepay.vn/img?bank=" & $sBankId & "&acc=" & $sAccountNo & "&amount=" & $iAmount & "&des=" & $sContentUrl & "&name=" & $sNameUrl
 
-    Local $hStatusLabel = GUICtrlCreateLabel("⏳ Đang đợi cafe của sếp gửi tới...", 10, 440, 400, 20, $SS_CENTER)
-    GUICtrlSetColor(-1, 0x0000FF)
+	Local $oIE = ObjCreate("Shell.Explorer.2")
+	Local $hActiveX = GUICtrlCreateObj($oIE, 90, 80, 320, 320)
+	$oIE.navigate("about:blank")
+	While $oIE.readyState <> 4
+		Sleep(50)
+	WEnd
+	Local $sHtml = "<html><body style='margin:0;padding:0;overflow:hidden;background-color:#0A0A0A;text-align:center;' scroll='no'>" & _
+			"<img src='" & $sQrUrl & "' width='310' height='310' style='border: 3px solid #00FFFF; margin-top: 2px;'></body></html>"
+	$oIE.document.write($sHtml)
+	$oIE.document.close()
 
-    GUISetState(@SW_SHOW, $hPayGUI)
-    Local $hTimer = TimerInit()
-    Local $bIsPaid = False
+	; --- THÔNG TIN CHUYỂN KHOẢN ---
+	GUICtrlCreateLabel("CHUYỂN KHOẢN ĐÚNG NỘI DUNG ĐỂ AUTO DUYỆT", 10, 410, 480, 20, $SS_CENTER)
+	GUICtrlSetFont(-1, 10, 700)
+	GUICtrlSetColor(-1, 0xFF6600)
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-    While 1
-        If GUIGetMsg() = $GUI_EVENT_CLOSE Then ExitLoop
+	GUICtrlCreateLabel("Số tiền: " & _FormatNumber($iAmount) & " VNĐ", 10, 435, 480, 25, $SS_CENTER)
+	GUICtrlSetFont(-1, 16, 800)
+	GUICtrlSetColor(-1, 0x00FF00)
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-        Local $iElapsed = TimerDiff($hTimer)
-        Local $iSecsLeft = 5 - Int($iElapsed / 1000)
+	; --- DÒNG GHI CHÚ THỜI GIAN GIA HẠN ---
+	GUICtrlCreateLabel("(Gia hạn thêm 24 Tiếng (1 Ngày) sử dụng kể từ lúc thanh toán thành công)", 10, 463, 480, 20, $SS_CENTER)
+	GUICtrlSetFont(-1, 10, 400)
+	GUICtrlSetColor(-1, 0x00FFFF) ; Màu xanh ngọc dạ quang nhạt
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-        If $iSecsLeft >= 0 Then
-            GUICtrlSetData($hStatusLabel, "⏳ Đang đợi cafe của sếp... (" & $iSecsLeft & "s)")
-        EndIf
+	GUICtrlCreateLabel("Nội dung CK: " & $sContent, 10, 485, 480, 25, $SS_CENTER)
+	GUICtrlSetFont(-1, 15, 800)
+	GUICtrlSetColor(-1, 0xFFD700)
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-        If $iElapsed > 5000 Then
-            GUICtrlSetData($hStatusLabel, "🔄 Đang kiểm tra hệ thống...")
-            Local $aCheck = _CheckLicenseOnline($sHWID)
-            If $aCheck[0] = "OK" Then
-                $bIsPaid = True
-                ExitLoop
-            EndIf
-            $hTimer = TimerInit()
-        EndIf
-        Sleep(20)
-    WEnd
-    GUIDelete($hPayGUI)
-    Return $bIsPaid
-EndFunc
+	; --- LỜI KÊU GỌI YÊU CẦU TÍNH NĂNG ---
+	GUICtrlCreateLabel("💡 Góp ý: Nếu bạn có ý tưởng hoặc cần nâng cấp thêm tính năng mới cho Tool, vui lòng liên hệ thẳng cho nhà phát triển. Mọi yêu cầu sẽ được hỗ trợ sớm nhất!", 20, 520, 460, 55, $SS_CENTER)
+	GUICtrlSetFont(-1, 10, 600)
+	GUICtrlSetColor(-1, 0xAAAAAA)
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
+
+	; --- THANH TRẠNG THÁI (STATUS BAR) ---
+	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Đang quét giao dịch tự động...", 10, 580, 480, 35, BitOR($SS_CENTER, $SS_SUNKEN, 0x0200))
+	GUICtrlSetFont(-1, 12, 700)
+	GUICtrlSetColor(-1, 0x00FFFF)
+	GUICtrlSetBkColor(-1, 0x1E1E1E)
+
+	; --- NÚT ĐÓNG TO Ở DƯỚI CÙNG ---
+	Local $hBtnCloseBottom = GUICtrlCreateButton("ĐÓNG CỬA SỔ NÀY", 150, 625, 200, 40)
+	GUICtrlSetBkColor($hBtnCloseBottom, 0x555555)
+	GUICtrlSetColor($hBtnCloseBottom, 0xFFFFFF)
+	GUICtrlSetFont($hBtnCloseBottom, 11, 700)
+
+	GUISetState(@SW_SHOW, $hPayGUI)
+	Local $hTimer = TimerInit()
+	Local $bIsPaid = False
+
+	While 1
+		Local $aMsg = GUIGetMsg(1)
+		If $aMsg[0] = $hBtnCloseX Or $aMsg[0] = $hBtnCloseBottom Then ExitLoop
+
+		Local $iElapsed = TimerDiff($hTimer)
+		Local $iSecsLeft = 5 - Int($iElapsed / 1000)
+
+		If $iSecsLeft >= 0 Then
+			GUICtrlSetData($hStatusLabel, "⏳ Quét giao dịch tự động... (" & $iSecsLeft & "s)")
+		EndIf
+
+		If $iElapsed > 5000 Then
+			Local $aCheck = _CheckLicenseOnline($sHWID)
+			If $aCheck[0] = "OK" Then
+				$bIsPaid = True
+				ExitLoop
+			EndIf
+			$hTimer = TimerInit()
+		EndIf
+		Sleep(20)
+	WEnd
+	GUIDelete($hPayGUI)
+	Return $bIsPaid
+EndFunc   ;==>_ShowDailyPaymentDialog
 ; CÁC HÀM QUẢN LÝ MẪU QLV (ĐÃ NÂNG CẤP: THÊM/SỬA/XÓA TOÀN BỘ)
 ; ==============================================================================
 
@@ -3442,9 +3511,6 @@ Func _SaveSettings()
 		IniWrite($sFile, "Settings", "WinY", $aPos[1])
 	EndIf
 
-	; b) Lưu trạng thái checkbox "Chế độ thống kê"
-	If IsDeclared("g_hCheckbox_StatsMode") Then
-	EndIf
 	; d) Lưu tên bàn đang dùng cuối cùng
 	If IsDeclared("g_sCurrentLoadedProfile") And $g_sCurrentLoadedProfile <> "" Then
 		IniWrite($sFile, "Settings", "LastProfile", $g_sCurrentLoadedProfile)
@@ -3844,7 +3910,7 @@ Func _FullBacktest()
 					Local $fBetUnit = $aQLVMatrix[$iCurLv][1] * $fBaseBet
 					Local $sNextBet = $g_aRawStats[$r][69]
 
-If $sRes = $sNextBet Then
+					If $sRes = $sNextBet Then
 						; TÌNH HUỐNG THẮNG
 						$g_aRawStats[$r][71] = Random(15, 30, 1) ; <--- THẮNG NGHỈ 5-10 PHÚT
 						$g_aRawStats[$r][65] += ($sNextBet == "B") ? ($fBetUnit * 0.95) : $fBetUnit
@@ -4071,7 +4137,6 @@ Func _RunAutoLoginFlow()
 	Sleep(1000)
 	_WD_Option('Port', 9515)
 
-	; Cấu hình giấu ChromeDriver khỏi hệ thống
 	Local $sDesiredCapabilities = '{"capabilities": {"alwaysMatch": {"goog:chromeOptions": {"w3c": true, "excludeSwitches": ["enable-automation"], "useAutomationExtension": false, "args":["--app=https://www.tk88.com/", "--start-maximized", "--disable-infobars", "--disable-blink-features=AutomationControlled"]}}}}'
 	$g_sWDSession = _WD_CreateSession($sDesiredCapabilities)
 	_WD_Navigate($g_sWDSession, "https://www.tk88.com/")
@@ -4080,20 +4145,17 @@ Func _RunAutoLoginFlow()
 	_UpdateStatus("⏳ Web đã mở. Hãy tự đăng nhập và vào sảnh!")
 
 	; --- TẠO BẢNG THÔNG BÁO TÙY CHỈNH (CHỐNG BẤM NHẦM ENTER) ---
-	Local $hWaitGUI = GUICreate("Chờ thao tác tay", 400, 180, -1, -1, BitOR(0x00C00000, 0x00080000), 0x00000008) ; Nổi trên cùng
+	Local $hWaitGUI = GUICreate("Chờ thao tác tay", 400, 180, -1, -1, BitOR(0x00C00000, 0x00080000), 0x00000008)
 	GUISetBkColor(0xF0F8FF, $hWaitGUI)
 
-	GUICtrlCreateLabel("1. Sếp hãy tự nhập TK, MK và kéo Captcha." & @CRLF & "2. Vào đến sảnh Baccarat Nhiều Bàn." & @CRLF & "3. Khi ĐÃ THẤY BÀN CHƠI, dùng CHUỘT bấm nút bên dưới.", 20, 20, 360, 60)
+	GUICtrlCreateLabel("1. Bạn hãy tự nhập TK, MK và kéo Captcha." & @CRLF & "2. Vào đến sảnh Baccarat Nhiều Bàn." & @CRLF & "3. Khi ĐÃ THẤY BÀN CHƠI, dùng CHUỘT bấm nút bên dưới.", 20, 20, 360, 60)
 	GUICtrlSetFont(-1, 10, 600)
 	GUICtrlSetColor(-1, 0x0000FF)
 
 	Local $hBtnOK = GUICtrlCreateButton("TÔI ĐÃ VÀO SẢNH - BẮT ĐẦU!", 50, 100, 300, 50)
 	GUICtrlSetBkColor($hBtnOK, 0x33CC33)
 	GUICtrlSetFont($hBtnOK, 12, 700)
-
 	GUISetState(@SW_SHOW, $hWaitGUI)
-
-	; Chuyển focus ra chỗ khác để Enter không ăn vào nút OK
 	ControlFocus($hWaitGUI, "", $hWaitGUI)
 
 	Local $bUserConfirmed = False
@@ -4103,17 +4165,14 @@ Func _RunAutoLoginFlow()
 			$bUserConfirmed = True
 			ExitLoop
 		EndIf
-		If $aMsg[0] = -3 And $aMsg[1] = $hWaitGUI Then ; Bấm nút X tắt bảng
+		If $aMsg[0] = -3 And $aMsg[1] = $hWaitGUI Then
 			$bUserConfirmed = False
 			ExitLoop
 		EndIf
-
-		; Nếu sếp lỡ đóng trình duyệt Chrome thì thoát vòng chờ luôn
 		If Not ProcessExists("chromedriver.exe") Then
 			$bUserConfirmed = False
 			ExitLoop
 		EndIf
-
 		Sleep(20)
 	WEnd
 	GUIDelete($hWaitGUI)
@@ -4122,18 +4181,15 @@ Func _RunAutoLoginFlow()
 		_UpdateStatus("🛑 Đã hủy quá trình vào sảnh.")
 		Return False
 	EndIf
-	; -------------------------------------------------------------
 
 	_UpdateStatus("✅ Đã nhận xác nhận! Bắt đầu chuẩn bị Tool.")
 	_WD_ExecuteScript($g_sWDSession, "document.title = 'MAIN_BACCARAT_TOOL_9999';")
 	$g_bIsLoginComplete = True
 
-	; Mã ẩn nút Đăng xuất để tránh click nhầm
 	Local $sAntiCheatJS = "setInterval(function() { var elements = document.querySelectorAll('a, button, [class*=\""logout\"" i], [class*=\""sign\"" i]'); elements.forEach(function(el) { var txt = el.innerText ? el.innerText.toLowerCase().trim() : ''; if(txt.includes('đăng xuất') || txt.includes('thoát') || txt.includes('đăng ký') || txt.includes('logout')) { el.style.display = 'none !important'; el.style.pointerEvents = 'none !important'; } }); }, 2000);"
 	_WD_ExecuteScript($g_sWDSession, $sAntiCheatJS)
-
 	Return True
-EndFunc
+EndFunc   ;==>_RunAutoLoginFlow
 Func _UpdateStatus($sText)
 	; CHỐT CHẶN TỐI THƯỢNG: Ép buộc $g_hGUI phải thực sự tồn tại
 	If $g_hGUI <> "" And $g_hGUI <> 0 Then
@@ -4279,8 +4335,8 @@ Func _SendTelegram($sMsg)
 		$sEncodedMsg &= StringFormat("%%%02X", $aData[$i])
 	Next
 
-	Local $sURL = "https://api.telegram.org/bot" & $sToken & "/sendMessage?chat_id=" & $sChatID & "&text=" & $sEncodedMsg
-	InetRead($sURL, 1) ; Bắn lệnh đi (Chạy ngầm không làm đơ tool)
+	Local $sUrl = "https://api.telegram.org/bot" & $sToken & "/sendMessage?chat_id=" & $sChatID & "&text=" & $sEncodedMsg
+	InetRead($sUrl, 1) ; Bắn lệnh đi (Chạy ngầm không làm đơ tool)
 EndFunc   ;==>_SendTelegram
 
 ; =====================================================================
@@ -5084,70 +5140,70 @@ Func _RunAI_Inspector()
 EndFunc   ;==>_RunAI_Inspector
 ; 2. HÀM LẤY GIÁ BÍ MẬT TỪ GOOGLE
 Func _GetDynamicPrice()
-    Local $sUrl = $g_sAppsScriptBaseURL & "?action=get_price&nocache=" & TimerInit()
-    Local $sResponse = BinaryToString(InetRead($sUrl, 3), 4)
-    Local $oJson = Json_Decode($sResponse)
-    Local $iPrice = Json_Get($oJson, "[price]")
-    If $iPrice = "" Or $iPrice = 0 Then Return 50000
-    Return Number($iPrice)
-EndFunc
+	Local $sUrl = $g_sAppsScriptBaseURL & "?action=get_price&nocache=" & TimerInit()
+	Local $sResponse = BinaryToString(InetRead($sUrl, 3), 4)
+	Local $oJson = Json_Decode($sResponse)
+	Local $iPrice = Json_Get($oJson, "[price]")
+	If $iPrice = "" Or $iPrice = 0 Then Return 50000
+	Return Number($iPrice)
+EndFunc   ;==>_GetDynamicPrice
 ; Hàm dịch từ số giây ra định dạng 00 ngày 00 giờ 00 phút 00 giây
 Func _FormatCountdown($iTotalSecs)
-    If $iTotalSecs <= 0 Then Return "Đã hết hạn"
-    Local $iDays = Int($iTotalSecs / 86400)
-    Local $iHours = Int(Mod($iTotalSecs, 86400) / 3600)
-    Local $iMins = Int(Mod($iTotalSecs, 3600) / 60)
-    Local $iSecs = Mod($iTotalSecs, 60)
+	If $iTotalSecs <= 0 Then Return "Đã hết hạn"
+	Local $iDays = Int($iTotalSecs / 86400)
+	Local $iHours = Int(Mod($iTotalSecs, 86400) / 3600)
+	Local $iMins = Int(Mod($iTotalSecs, 3600) / 60)
+	Local $iSecs = Mod($iTotalSecs, 60)
 
-    Local $sResult = ""
-    If $iDays > 0 Then $sResult &= StringFormat("%02d ngày ", $iDays)
-    $sResult &= StringFormat("%02d giờ %02d phút %02d giây", $iHours, $iMins, $iSecs)
-    Return $sResult
-EndFunc
+	Local $sResult = ""
+	If $iDays > 0 Then $sResult &= StringFormat("%02d ngày ", $iDays)
+	$sResult &= StringFormat("%02d giờ %02d phút %02d giây", $iHours, $iMins, $iSecs)
+	Return $sResult
+EndFunc   ;==>_FormatCountdown
 
 Func _TickTock()
-    If $g_iTotalSecondsLeft > 0 Then
-        $g_iTotalSecondsLeft -= 1 ; Lùi 1 giây
+	If $g_iTotalSecondsLeft > 0 Then
+		$g_iTotalSecondsLeft -= 1 ; Lùi 1 giây
 
-        If $g_sExpiryDate = "Lifetime" Or $g_sExpiryDate = "" Then
-            GUICtrlSetData($g_hLabel_ExpiryDate, "Vĩnh viễn")
-            GUICtrlSetColor($g_hLabel_ExpiryDate, 0x0000FF) ; Xanh dương cho vĩnh viễn
-        Else
-            ; 1. Tính toán Giờ, Phút, Giây đếm ngược
-            Local $iHours = Int($g_iTotalSecondsLeft / 3600)
-            Local $iMins = Int(Mod($g_iTotalSecondsLeft, 3600) / 60)
-            Local $iSecs = Mod($g_iTotalSecondsLeft, 60)
-            Local $sTimeCount = StringFormat("%02d:%02d:%02d", $iHours, $iMins, $iSecs)
+		If $g_sExpiryDate = "Lifetime" Or $g_sExpiryDate = "" Then
+			GUICtrlSetData($g_hLabel_ExpiryDate, "Vĩnh viễn")
+			GUICtrlSetColor($g_hLabel_ExpiryDate, 0x0000FF) ; Xanh dương cho vĩnh viễn
+		Else
+			; 1. Tính toán Giờ, Phút, Giây đếm ngược
+			Local $iHours = Int($g_iTotalSecondsLeft / 3600)
+			Local $iMins = Int(Mod($g_iTotalSecondsLeft, 3600) / 60)
+			Local $iSecs = Mod($g_iTotalSecondsLeft, 60)
+			Local $sTimeCount = StringFormat("%02d:%02d:%02d", $iHours, $iMins, $iSecs)
 
-            ; 2. Cắt bỏ "thời gian chết" bị dính kèm từ server
-            Local $sOnlyDate = StringRegExpReplace($g_sExpiryDate, "\d{2}:\d{2}:\d{2}\s*", "")
-            $sOnlyDate = StringStripWS($sOnlyDate, 3)
+			; 2. Cắt bỏ "thời gian chết" bị dính kèm từ server
+			Local $sOnlyDate = StringRegExpReplace($g_sExpiryDate, "\d{2}:\d{2}:\d{2}\s*", "")
+			$sOnlyDate = StringStripWS($sOnlyDate, 3)
 
-            ; 3. Ghép Đếm ngược ra PHÍA SAU Ngày tháng năm
-            GUICtrlSetData($g_hLabel_ExpiryDate, $sOnlyDate & "   " & $sTimeCount)
+			; 3. Ghép Đếm ngược ra PHÍA SAU Ngày tháng năm
+			GUICtrlSetData($g_hLabel_ExpiryDate, $sOnlyDate & "   " & $sTimeCount)
 
-            ; 4. Tự động đổi màu cảnh báo theo thời gian còn lại
-            If $g_iTotalSecondsLeft <= 259200 Then
-                ; Dưới 3 ngày (3 * 24 * 60 * 60 giây) -> Báo động Đỏ
-                GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF0000)
-            ElseIf $g_iTotalSecondsLeft <= 604800 Then
-                ; Dưới 7 ngày (7 * 24 * 60 * 60 giây) -> Cảnh báo Vàng/Cam
-                GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF8C00)
-            Else
-                ; Còn nhiều thời gian -> Màu Xanh lá an toàn
-                GUICtrlSetColor($g_hLabel_ExpiryDate, 0x006400)
-            EndIf
-        EndIf
-    Else
-        ; Nếu hết thời gian -> Dừng đồng hồ
-        AdlibUnRegister("_TickTock")
-        GUICtrlSetData($g_hLabel_ExpiryDate, "ĐÃ HẾT HẠN")
-        GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF0000) ; Đổi sang màu đỏ
+			; 4. Tự động đổi màu cảnh báo theo thời gian còn lại
+			If $g_iTotalSecondsLeft <= 259200 Then
+				; Dưới 3 ngày (3 * 24 * 60 * 60 giây) -> Báo động Đỏ
+				GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF0000)
+			ElseIf $g_iTotalSecondsLeft <= 604800 Then
+				; Dưới 7 ngày (7 * 24 * 60 * 60 giây) -> Cảnh báo Vàng/Cam
+				GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF8C00)
+			Else
+				; Còn nhiều thời gian -> Màu Xanh lá an toàn
+				GUICtrlSetColor($g_hLabel_ExpiryDate, 0x006400)
+			EndIf
+		EndIf
+	Else
+		; Nếu hết thời gian -> Dừng đồng hồ
+		AdlibUnRegister("_TickTock")
+		GUICtrlSetData($g_hLabel_ExpiryDate, "ĐÃ HẾT HẠN")
+		GUICtrlSetColor($g_hLabel_ExpiryDate, 0xFF0000) ; Đổi sang màu đỏ
 
-        ; Nếu không phải key vĩnh viễn thì hiện thông báo bắt gia hạn
-        If $g_sExpiryDate <> "Lifetime" And $g_sExpiryDate <> "" Then
-            MsgBox(48, "Thông báo", "Thời gian sử dụng đã kết thúc! Vui lòng gia hạn để chơi tiếp.")
-            _ShowExpiryDialog($g_sExpiryDate, $g_sHWID)
-        EndIf
-    EndIf
-EndFunc
+		; Nếu không phải key vĩnh viễn thì hiện thông báo bắt gia hạn
+		If $g_sExpiryDate <> "Lifetime" And $g_sExpiryDate <> "" Then
+			MsgBox(48, "Thông báo", "Thời gian sử dụng đã kết thúc! Vui lòng gia hạn để chơi tiếp.")
+			_ShowExpiryDialog($g_sExpiryDate, $g_sHWID)
+		EndIf
+	EndIf
+EndFunc   ;==>_TickTock
