@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "2.2" ; Phiên bản hiện tại
+Global Const $g_sVersion = "2.3" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -570,23 +570,22 @@ Func _CreateGroup_BettingMethod()
 	GUICtrlSetBkColor(-1, 0xFFFACD)
 	$y += 110
 
-	; Đồng đều chữ và phông chữ
-	$g_hCheckbox_SeparateQLV = GUICtrlCreateCheckbox("Chế độ QLV Riêng Biệt (Mỗi dòng 1 bảng)", $x_label, $y, 300, 20)
+	$g_hCheckbox_SeparateQLV = GUICtrlCreateCheckbox("QLV Riêng Biệt (Từng dòng độc lập)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
 	$y += 25
 
-	$g_hCheckbox_ContinuousMode = GUICtrlCreateCheckbox("Chế độ Đánh Nối Đuôi (Theo sát cầu dài)", $x_label, $y, 300, 20)
+	$g_hCheckbox_ContinuousMode = GUICtrlCreateCheckbox("Đánh Nối Đuôi (Theo sát cầu)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
 	$y += 25
 
-	$g_hCheckbox_ReverseLogic = GUICtrlCreateCheckbox("Chế độ Bám Chuỗi (Win đánh tiếp, Thua cắt)", $x_label, $y, 300, 20)
+	$g_hCheckbox_ReverseLogic = GUICtrlCreateCheckbox("Bám Chuỗi (Thắng tiến, Thua cắt)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
-	GUICtrlSetColor(-1, 0xFF0000) ; Giữ màu đỏ cho Bám chuỗi để cảnh báo
-
+	GUICtrlSetColor(-1, 0xFF0000)
 	$y += 25
-	$g_hCheckbox_DuKich = GUICtrlCreateCheckbox("Bật chiến thuật Du Kích (Thắng nghỉ 5p, Thua bỏ 10 tay)", $x_label, $y, 350, 20)
+
+	$g_hCheckbox_DuKich = GUICtrlCreateCheckbox("Du Kích (Thắng nghỉ 5p, Thua bỏ 10 tay)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
-	GUICtrlSetColor(-1, 0x008000) ; Chữ màu xanh lá
+	GUICtrlSetColor(-1, 0x008000)
 EndFunc   ;==>_CreateGroup_BettingMethod
 Func _CreateGroup_QLV_On_Main()
 	_CreateStyledGroup("Cấu Hình Quản Lý Vốn", 10, 590, 320, 240)
@@ -1738,8 +1737,8 @@ Func _StopProcess()
 	$g_bManualStopped = True
 	_UpdateStatus("🛑 Đã dừng Tool và chốt Lợi nhuận vào Số dư!")
 
-	If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
-	$g_hTargetGameWin = 0
+	;If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
+	;$g_hTargetGameWin = 0
 	;If $g_sWDSession <> "" Then
 	;_WD_DeleteSession($g_sWDSession)
 	;$g_sWDSession = ""
@@ -1778,8 +1777,8 @@ Func _HaltProcess($sReason)
 	$g_bManualStopped = True
 	_UpdateStatus($sReason)
 
-	If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
-	$g_hTargetGameWin = 0
+	;If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
+	;$g_hTargetGameWin = 0
 	;If $g_sWDSession <> "" Then
 	;_WD_DeleteSession($g_sWDSession)
 	;$g_sWDSession = ""
@@ -2066,6 +2065,8 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 	Local $aQLV = _GetQLV_Params($iCurrentLvl)
 
 	Local $bReverseLogic = (GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED)
+	; LƯU NHÁP LẠI INDEX DÒNG ĐANG ĐÁNH TRƯỚC KHI XỬ LÝ WIN/LOSS
+	Local $iSavedActiveIndex = $g_iLastActiveRuleIndex
 	Local $fProfitChange = 0
 
 	If $sActualResult = $sBetOn Then
@@ -2124,9 +2125,11 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 		EndIf
 	EndIf
 
-	; ---> SỬA LỖI QLV: ĐỒNG BỘ LẠI LEVEL CHO VÁN SAU KHI DÙNG VỐN RIÊNG <---
-	If $bSepQLV And $g_iLastActiveRuleIndex > -1 Then
-		$g_aRuleLevels[$g_iLastActiveRuleIndex] = $g_iCapitalLevel
+; ---> ĐÃ FIX LỖI: SỬ DỤNG INDEX LƯU NHÁP ĐỂ ĐỒNG BỘ VỐN VỀ 0 <---
+	; Dù tool có reset $g_iLastActiveRuleIndex về -1 để cắt chuỗi,
+	; thì hệ thống vẫn nhớ dòng vừa đánh là dòng nào để trả Level về đúng mức quy định (Ví dụ trả về Level 0)
+	If $bSepQLV And $iSavedActiveIndex > -1 Then
+		$g_aRuleLevels[$iSavedActiveIndex] = $g_iCapitalLevel
 	EndIf
 
 	_UpdateProfitLabel()
@@ -2699,11 +2702,11 @@ Func _SetControlsState($bEnable)
 		GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
 		GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
 		GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-
 		; Luôn bật ô nhập liệu khi tool dừng
 		GUICtrlSetState($g_hInput_CustomRules, $GUI_ENABLE)
 		GUICtrlSetState($g_hCheckbox_SeparateQLV, $GUI_ENABLE)
 		GUICtrlSetBkColor($g_hInput_CustomRules, 0xFFFACD)
+		GUICtrlSetState($g_hCheckbox_DuKich, $GUI_ENABLE)
 
 		; Xử lý hiển thị mờ chữ khi dừng (Dựa vào cái nào đang tích)
 		If GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED Then
@@ -2727,6 +2730,7 @@ Func _SetControlsState($bEnable)
 		GUICtrlSetState($g_hCheckbox_SeparateQLV, $GUI_DISABLE)
 		GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_DISABLE)
 		GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_DISABLE)
+		GUICtrlSetState($g_hCheckbox_DuKich, $GUI_DISABLE)
 	EndIf
 EndFunc   ;==>_SetControlsState
 Func _UpdateProfitLabel()
