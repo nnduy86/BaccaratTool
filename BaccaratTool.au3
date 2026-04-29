@@ -2936,15 +2936,14 @@ Func _ShowExpiryDialog($sExpiryDate, $sHWID)
 EndFunc   ;==>_ShowExpiryDialog
 
 ; =====================================================================
-; GIAO DIỆN QUÉT MÃ QR VIP - HẦM HỐ 3D (ĐÃ BỎ KHUNG TRẮNG)
+; GIAO DIỆN QUÉT MÃ QR VIP - HẦM HỐ 3D (ĐÃ BỎ NÚT ĐÓNG DƯỚI CÙNG & THÊM AUTO TÍNH NGÀY)
 ; =====================================================================
 Func _ShowDailyPaymentDialog($sHWID, $iAmount)
-	; Đổi thành $WS_POPUP để xóa thanh tiêu đề trắng của Windows
-	Local $hPayGUI = GUICreate("CỔNG THANH TOÁN TỰ ĐỘNG", 500, 680, -1, -1, $WS_POPUP, $WS_EX_TOPMOST)
+	Local $hPayGUI = GUICreate("CỔNG THANH TOÁN TỰ ĐỘNG", 500, 660, -1, -1, $WS_POPUP, $WS_EX_TOPMOST)
 	GUISetBkColor(0x0A0A0A, $hPayGUI) ; Đen sâu thăm thẳm
 
 	; Tạo viền bao quanh toàn bộ cửa sổ
-	Local $hMainBorder = GUICtrlCreateLabel("", 0, 0, 500, 680, $SS_SUNKEN)
+	Local $hMainBorder = GUICtrlCreateLabel("", 0, 0, 500, 660, $SS_SUNKEN)
 	GUICtrlSetState($hMainBorder, $GUI_DISABLE)
 
 	; Nút X tắt ở góc phải trên cùng
@@ -2994,47 +2993,44 @@ Func _ShowDailyPaymentDialog($sHWID, $iAmount)
 	GUICtrlSetColor(-1, 0xFF6600)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	GUICtrlCreateLabel("Số tiền: " & _FormatNumber($iAmount) & " VNĐ", 10, 435, 480, 25, $SS_CENTER)
-	GUICtrlSetFont(-1, 16, 800)
+	GUICtrlCreateLabel("Đơn giá (24 Tiếng): " & _FormatNumber($iAmount) & " VNĐ", 10, 430, 480, 25, $SS_CENTER)
+	GUICtrlSetFont(-1, 14, 800)
 	GUICtrlSetColor(-1, 0x00FF00)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	; --- DÒNG GHI CHÚ THỜI GIAN GIA HẠN ---
-	GUICtrlCreateLabel("(Gia hạn thêm 24 Tiếng (1 Ngày) sử dụng kể từ lúc thanh toán thành công)", 10, 463, 480, 20, $SS_CENTER)
-	GUICtrlSetFont(-1, 10, 400)
+	; --- DÒNG GHI CHÚ CỘNG DỒN TỰ ĐỘNG ---
+	Local $sNote = "💡 HỆ THỐNG AUTO CỘNG DỒN GÓI 24H TỪ LÚC KÍCH HOẠT!" & @CRLF & _
+				   "Ví dụ: Nạp " & _FormatNumber($iAmount * 2) & "đ = 48 Tiếng | Nạp " & _FormatNumber($iAmount * 5) & "đ = 5 Ngày"
+	GUICtrlCreateLabel($sNote, 10, 460, 480, 35, $SS_CENTER)
+	GUICtrlSetFont(-1, 10, 600)
 	GUICtrlSetColor(-1, 0x00FFFF) ; Màu xanh ngọc dạ quang nhạt
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	GUICtrlCreateLabel("Nội dung CK: " & $sContent, 10, 485, 480, 25, $SS_CENTER)
+	GUICtrlCreateLabel("Nội dung CK: " & $sContent, 10, 500, 480, 25, $SS_CENTER)
 	GUICtrlSetFont(-1, 15, 800)
 	GUICtrlSetColor(-1, 0xFFD700)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
 	; --- LỜI KÊU GỌI YÊU CẦU TÍNH NĂNG ---
-	GUICtrlCreateLabel("💡 Góp ý: Nếu bạn có ý tưởng hoặc cần nâng cấp thêm tính năng mới cho Tool, vui lòng liên hệ thẳng cho nhà phát triển. Mọi yêu cầu sẽ được hỗ trợ sớm nhất!", 20, 520, 460, 55, $SS_CENTER)
+	GUICtrlCreateLabel("💡 Góp ý: Nếu bạn có ý tưởng hoặc cần nâng cấp thêm tính năng mới cho Tool, vui lòng liên hệ thẳng cho nhà phát triển. Mọi yêu cầu sẽ được hỗ trợ sớm nhất!", 20, 535, 460, 55, $SS_CENTER)
 	GUICtrlSetFont(-1, 10, 600)
 	GUICtrlSetColor(-1, 0xAAAAAA)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
 	; --- THANH TRẠNG THÁI (STATUS BAR) ---
-	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Đang quét giao dịch tự động...", 10, 580, 480, 35, BitOR($SS_CENTER, $SS_SUNKEN, 0x0200))
+	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Đang quét giao dịch tự động...", 10, 600, 480, 35, BitOR($SS_CENTER, $SS_SUNKEN, 0x0200))
 	GUICtrlSetFont(-1, 12, 700)
 	GUICtrlSetColor(-1, 0x00FFFF)
 	GUICtrlSetBkColor(-1, 0x1E1E1E)
-
-	; --- NÚT ĐÓNG TO Ở DƯỚI CÙNG ---
-	Local $hBtnCloseBottom = GUICtrlCreateButton("ĐÓNG CỬA SỔ NÀY", 150, 625, 200, 40)
-	GUICtrlSetBkColor($hBtnCloseBottom, 0x555555)
-	GUICtrlSetColor($hBtnCloseBottom, 0xFFFFFF)
-	GUICtrlSetFont($hBtnCloseBottom, 11, 700)
 
 	GUISetState(@SW_SHOW, $hPayGUI)
 	Local $hTimer = TimerInit()
 	Local $bIsPaid = False
 
+	; --- VÒNG LẶP KIỂM TRA (ĐÃ BỎ ĐIỀU KIỆN NÚT ĐÓNG CŨ) ---
 	While 1
 		Local $aMsg = GUIGetMsg(1)
-		If $aMsg[0] = $hBtnCloseX Or $aMsg[0] = $hBtnCloseBottom Then ExitLoop
+		If $aMsg[0] = $hBtnCloseX Then ExitLoop
 
 		Local $iElapsed = TimerDiff($hTimer)
 		Local $iSecsLeft = 5 - Int($iElapsed / 1000)
