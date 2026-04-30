@@ -13,6 +13,10 @@
 #include <GuiListView.au3>
 #include <Misc.au3>
 #include "Json.au3"
+; --- ÉP CHUẨN MÔI TRƯỜNG ĐỂ CHỐNG LỆCH TỌA ĐỘ TRÊN MÁY KHÁCH ---
+Opt("MouseCoordMode", 1)  ; 1 = Chuột dùng Tọa độ tuyệt đối toàn màn hình
+Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toàn màn hình
+Opt("ColorMode", 0)       ; 0 = Đọc mã màu chuẩn RGB (Không bị đảo ngược xanh/đỏ)
 
 ; <<<< Yêu cầu quyền quản trị để tool hoạt động ổn định >>>>
 #RequireAdmin
@@ -23,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "2.5" ; Phiên bản hiện tại
+Global Const $g_sVersion = "2.6" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -331,6 +335,19 @@ Func _MainLoop()
 
 		Local $aMsg = GUIGetMsg(1)
 
+		; ---> TỰ ĐỘNG NHẢY DẤU CHẤM CHO 3 Ô TIỀN TỆ KHI KHÁCH GÕ <---
+		Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
+		For $i = 0 To 2
+			Local $sRawVal = GUICtrlRead($aInputs[$i])
+			If $sRawVal <> "" Then
+				Local $sFormatted = _FormatMoneyVN($sRawVal)
+				If $sRawVal <> $sFormatted Then
+					GUICtrlSetData($aInputs[$i], $sFormatted)
+				EndIf
+			EndIf
+		Next
+		; -----------------------------------------------------------
+
 		; --- XỬ LÝ CỬA SỔ NẠP THÊM GIỜ ---
 		If $g_hTopUpGUI <> 0 Then
 			If $aMsg[1] = $g_hTopUpGUI Then
@@ -408,11 +425,6 @@ Func _MainLoop()
 			Case $g_hCombo_VolumeFilter, $g_hDate_VolumeFilter
 				_RefreshVolumeDisplay()
 
-			Case $g_hCombo_DailyData
-				Local $sFiltered = _Vault_GetFilteredHistory()
-				$sFiltered = StringReplace($sFiltered, "T", "")
-				GUICtrlSetData($g_hLabel_VaultTotalNum, _FormatNumber(StringLen($sFiltered)))
-
 			Case $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter
 				_RefreshProfitDisplay()
 
@@ -425,22 +437,18 @@ Func _MainLoop()
 			Case $g_hMenu_AnalyzeQLV
 				_ShowQLV_Analysis_Pro_Modeless()
 
+			; ---> NÚT GIA HẠN 3D VÀ MENU NGẦM <---
 			Case $g_hButton_TopUp
-				; Ép Menu xổ ra ngay tại vị trí nút nhưng bản thân cái ô Menu vẫn ẩn
 				_GUICtrlComboBox_ShowDropDown(GUICtrlGetHandle($g_hCombo_MainTopUpDays), True)
 
 			Case $g_hCombo_MainTopUpDays
 				Local $sSelected = GUICtrlRead($g_hCombo_MainTopUpDays)
-				; Kiểm tra nếu khách thực sự chọn một dòng có giá tiền
 				If StringInStr($sSelected, "(") Then
 					Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
 					If $iDays > 0 Then
 						If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
 						_UpdateQR_TopUp($iDays)
 					EndIf
-
-					; QUAN TRỌNG: Xóa sạch dữ liệu đã chọn để lần sau bấm lại nó vẫn tính là "thay đổi"
-					; Nhưng KHÔNG dùng GUICtrlSetData nạp lại danh sách để tránh bị lặp dòng
 					_GUICtrlComboBox_SetCurSel(GUICtrlGetHandle($g_hCombo_MainTopUpDays), -1)
 				EndIf
 
@@ -509,18 +517,6 @@ Func _MainLoop()
 				_GetCoords_Fast($g_hInput_BetTimeX1, $g_hInput_BetTimeY1)
 			Case $g_hButton_GetBetTimeBR
 				_GetCoords_Fast($g_hInput_BetTimeX2, $g_hInput_BetTimeY2)
-			Case $g_hButton_GetBankerColor
-				_GetColor_Fast($g_hInput_BankerColor)
-			Case $g_hButton_GetPlayerColor
-				_GetColor_Fast($g_hInput_PlayerColor)
-			Case $g_hButton_GetTieColor
-				_GetColor_Fast($g_hInput_TieColor)
-			Case $g_hButton_GetBetTimeColor
-				_GetColor_Fast($g_hInput_BetTimeColor)
-			Case $g_hButton_TestColor_Result
-				_HandleTestColorButton("Result")
-			Case $g_hButton_TestColor_Timer
-				_HandleTestColorButton("Timer")
 			Case $g_hCombo_Profiles, $g_hCombo_Profiles_Main
 				_HandleProfileChange($aMsg[0])
 			Case $g_hCombo_QLV_Presets
@@ -539,11 +535,25 @@ Func _MainLoop()
 	WEnd
 EndFunc   ;==>_MainLoop
 
+
 ; ==================================================================================================
-; HÀM VÒNG LẶP PHỤ
+; HÀM VÒNG LẶP PHỤ (KHI TOOL ĐANG QUÉT GAME)
 ; ==================================================================================================
 Func _ProcessGUIMessages()
 	Local $aMsg = GUIGetMsg(1)
+
+	; ---> TỰ ĐỘNG NHẢY DẤU CHẤM CHO 3 Ô TIỀN TỆ KHI KHÁCH GÕ <---
+	Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
+	For $i = 0 To 2
+		Local $sRawVal = GUICtrlRead($aInputs[$i])
+		If $sRawVal <> "" Then
+			Local $sFormatted = _FormatMoneyVN($sRawVal)
+			If $sRawVal <> $sFormatted Then
+				GUICtrlSetData($aInputs[$i], $sFormatted)
+			EndIf
+		EndIf
+	Next
+	; -----------------------------------------------------------
 
 	If $g_hTopUpGUI <> 0 Then
 		If $aMsg[1] = $g_hTopUpGUI Then
@@ -628,17 +638,18 @@ Func _ProcessGUIMessages()
 				Exit
 			EndIf
 
-		; ---> ĐỘNG CƠ "NÚT BẤM ẢO THUẬT" NẰM Ở ĐÂY <---
-		Case $g_hCombo_MainTopUpDays
-			Local $sSelectedMain = GUICtrlRead($g_hCombo_MainTopUpDays)
-			If StringInStr($sSelectedMain, "Ngày") Then
-				Local $iDaysMain = Number(StringRegExpReplace($sSelectedMain, "^(\d+).*", "$1"))
-				If $iDaysMain > 0 Then
-					If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
-					_UpdateQR_TopUp($iDaysMain)
-				EndIf
+		Case $g_hButton_TopUp
+			_GUICtrlComboBox_ShowDropDown(GUICtrlGetHandle($g_hCombo_MainTopUpDays), True)
 
-				GUICtrlSetData($g_hCombo_MainTopUpDays, "|🔥 BẤM ĐỂ GIA HẠN|1 Ngày (50.000đ)|2 Ngày (100.000đ)|3 Ngày (150.000đ)|7 Ngày (350.000đ)|15 Ngày (750.000đ)|30 Ngày (1.500.000đ)", "🔥 BẤM ĐỂ GIA HẠN")
+		Case $g_hCombo_MainTopUpDays
+			Local $sSelected = GUICtrlRead($g_hCombo_MainTopUpDays)
+			If StringInStr($sSelected, "(") Then
+				Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
+				If $iDays > 0 Then
+					If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
+					_UpdateQR_TopUp($iDays)
+				EndIf
+				_GUICtrlComboBox_SetCurSel(GUICtrlGetHandle($g_hCombo_MainTopUpDays), -1)
 			EndIf
 
 		Case $g_hButton_Start
@@ -978,20 +989,20 @@ Func _CreateGroup_InfoAndTargets()
 	GUICtrlSetFont($g_hLabel_TotalProfitStats, 14, 800)
 	GUICtrlSetBkColor($g_hLabel_TotalProfitStats, 0xE8F8F5)
 	GUICtrlSetColor($g_hLabel_TotalProfitStats, 0x006400)
-
-	$y += 60
-	GUICtrlCreateLabel("Chốt lời:", $x, $y, 50, 20)
-	$g_hInput_TakeProfit = GUICtrlCreateInput("0", $x + 50, $y - 2, 70, 22)
+$y += 60
+	GUICtrlCreateLabel("Chốt lời (đ):", $x, $y, 80, 20)
+	$g_hInput_TakeProfit = GUICtrlCreateInput("100.000", $x + 85, $y - 2, 85, 22)
 	GUICtrlSetBkColor($g_hInput_TakeProfit, 0xE0FFFF)
 
-	GUICtrlCreateLabel("Kéo đuôi:", $x + 125, $y, 60, 20)
+	GUICtrlCreateLabel("Kéo đuôi (đ):", $x + 180, $y, 80, 20)
 	GUICtrlSetColor(-1, 0x008000)
-	$g_hInput_TrailingStop = GUICtrlCreateInput("0", $x + 185, $y - 2, 70, 22)
+	$g_hInput_TrailingStop = GUICtrlCreateInput("50.000", $x + 265, $y - 2, 85, 22)
 	GUICtrlSetBkColor($g_hInput_TrailingStop, 0xE0FFFF)
 	GUICtrlSetTip(-1, "Khoảng cách Gồng Lãi. Khi đạt chốt lời, tool KHÔNG DỪNG mà tiếp tục đánh. Nếu lãi tụt xuống bằng khoảng cách này so với ĐỈNH LÃI thì mới chốt.")
 
-	GUICtrlCreateLabel("Cắt lỗ:", $x + 265, $y, 50, 20)
-	$g_hInput_StopLoss = GUICtrlCreateInput("0", $x + 315, $y - 2, 75, 22)
+	$y += 30
+	GUICtrlCreateLabel("Cắt lỗ (đ):", $x, $y, 80, 20)
+	$g_hInput_StopLoss = GUICtrlCreateInput("200.000", $x + 85, $y - 2, 85, 22)
 	GUICtrlSetBkColor($g_hInput_StopLoss, 0xE0FFFF)
 
 	$y += 40
@@ -2508,44 +2519,52 @@ Func _CheckProfitLossTargets()
 	Local $sReason = ""
 	Local $sStatus = ""
 
-	Local $fTP = $g_fTakeProfit
-	Local $fTrail = Number(StringReplace(GUICtrlRead($g_hInput_TrailingStop), ".", ""))
+	; 1. Lọc sạch dấu chấm để ra con số tính toán thực tế (VND)
+	Local $iTakeProfitMoney = Number(StringRegExpReplace(GUICtrlRead($g_hInput_TakeProfit), "\D", ""))
+	Local $iTrailingMoney   = Number(StringRegExpReplace(GUICtrlRead($g_hInput_TrailingStop), "\D", ""))
+	Local $iStopLossMoney   = Number(StringRegExpReplace(GUICtrlRead($g_hInput_StopLoss), "\D", ""))
 
-	; --- 1. CHỐT LỜI ĐỘNG (GỒNG LÃI KÉO ĐUÔI) ---
-	If $fTP > 0 And $fTrail > 0 Then
+	; 2. CẬP NHẬT ĐỈNH LỢI NHUẬN (Dùng cho Kéo đuôi)
+	If $g_fTotalProfit > $g_fPeakProfit Then
+		$g_fPeakProfit = $g_fTotalProfit
+	EndIf
+
+	; 3. LOGIC CHỐT LỜI ĐỘNG (KÉO ĐUÔI)
+	If $iTakeProfitMoney > 0 And $iTrailingMoney > 0 Then
 		; Nếu vượt qua Target ban đầu
-		If $g_fTotalProfit >= $fTP Then
+		If $g_fTotalProfit >= $iTakeProfitMoney Then
 			If Not $g_bIsTrailingMode Then
 				$g_bIsTrailingMode = True
-				_UpdateStatus("🚀 ĐÃ KÍCH HOẠT GỒNG LÃI! Kéo đuôi " & _FormatNumber($fTrail) & "đ dưới Đỉnh.")
+				_UpdateStatus("🚀 ĐÃ KÍCH HOẠT GỒNG LÃI! Kéo đuôi " & _FormatMoneyVN($iTrailingMoney) & "đ dưới Đỉnh.")
 			EndIf
 		EndIf
 
 		; Nếu đang Gồng, chạm lưới Kéo Đuôi thì Cắt
 		If $g_bIsTrailingMode Then
-			Local $fCutLevel = $g_fPeakProfit - $fTrail
+			Local $fCutLevel = $g_fPeakProfit - $iTrailingMoney
 			If $g_fTotalProfit <= $fCutLevel And $g_fTotalProfit > 0 Then
 				$bStopNow = True
 				$sStatus = "DONE_WIN"
-				$sReason = "ĐÃ CHỐT LỜI ĐỘNG Ở: " & _FormatNumber($g_fTotalProfit) & " (Tụt từ đỉnh " & _FormatNumber($g_fPeakProfit) & ")"
+				$sReason = "CHỐT KÉO ĐUÔI Ở: " & _FormatMoneyVN($g_fTotalProfit) & "đ (Từ đỉnh: " & _FormatMoneyVN($g_fPeakProfit) & "đ)"
 			EndIf
 		EndIf
 	Else
-		; --- 2. CHỐT LỜI CỨNG BÌNH THƯỜNG ---
-		If $fTP > 0 And $g_fTotalProfit >= $fTP Then
+		; 4. CHỐT LỜI CỨNG BÌNH THƯỜNG (Nếu khách ghi Kéo đuôi = 0)
+		If $iTakeProfitMoney > 0 And $g_fTotalProfit >= $iTakeProfitMoney Then
 			$bStopNow = True
 			$sStatus = "DONE_WIN"
-			$sReason = "ĐÃ CHẠM MỐC CHỐT LỜI"
+			$sReason = "ĐÃ CHẠM MỐC CHỐT LỜI: " & _FormatMoneyVN($g_fTotalProfit) & "đ"
 		EndIf
 	EndIf
 
-	; --- 3. CẮT LỖ ---
-	If $g_fStopLoss > 0 And $g_fTotalProfit <= -$g_fStopLoss Then
+	; 5. CẮT LỖ
+	If $iStopLossMoney > 0 And $g_fTotalProfit <= -$iStopLossMoney Then
 		$bStopNow = True
 		$sStatus = "DONE_LOSS"
-		$sReason = "ĐÃ CHẠM MỐC CẮT LỖ"
+		$sReason = "ĐÃ CHẠM MỐC CẮT LỖ: " & _FormatMoneyVN($g_fTotalProfit) & "đ"
 	EndIf
 
+	; --- GỌI POPUP THÔNG BÁO VÀ CHỜ LỆNH XỬ LÝ ---
 	If $bStopNow Then
 		_UpdateStatus("⏸️ TẠM DỪNG: " & $sReason & " - Đang chờ lệnh...")
 		Local $iUserChoice = _ShowTargetPopup_Overlay($sStatus, $sReason)
@@ -4883,3 +4902,16 @@ Func _ShowTopUp_Modeless()
 	$g_hTopUpCheckTimer = TimerInit()
 	$g_iLastTopUpSecs = -1
 EndFunc   ;==>_ShowTopUp_Modeless
+Func _FormatMoneyVN($sInput)
+    ; Xóa sạch mọi thứ không phải là số (bao gồm cả dấu chấm cũ)
+    $sInput = StringRegExpReplace($sInput, "\D", "")
+    If $sInput = "" Then Return ""
+
+    ; Thuật toán chèn dấu chấm từ phải qua trái
+    Local $sFormatted = ""
+    While StringLen($sInput) > 3
+        $sFormatted = "." & StringRight($sInput, 3) & $sFormatted
+        $sInput = StringTrimRight($sInput, 3)
+    WEnd
+    Return $sInput & $sFormatted
+EndFunc
