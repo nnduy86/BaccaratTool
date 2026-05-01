@@ -16,7 +16,7 @@
 ; --- ÉP CHUẨN MÔI TRƯỜNG ĐỂ CHỐNG LỆCH TỌA ĐỘ TRÊN MÁY KHÁCH ---
 Opt("MouseCoordMode", 1)  ; 1 = Chuột dùng Tọa độ tuyệt đối toàn màn hình
 Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toàn màn hình
-Opt("ColorMode", 0)       ; 0 = Đọc mã màu chuẩn RGB (Không bị đảo ngược xanh/đỏ)
+;Opt("ColorMode", 0)       ; 0 = Đọc mã màu chuẩn RGB (Không bị đảo ngược xanh/đỏ)
 
 ; <<<< Yêu cầu quyền quản trị để tool hoạt động ổn định >>>>
 #RequireAdmin
@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "2.6" ; Phiên bản hiện tại
+Global Const $g_sVersion = "2.6.1" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -442,15 +442,29 @@ Func _MainLoop()
 				_GUICtrlComboBox_ShowDropDown(GUICtrlGetHandle($g_hCombo_MainTopUpDays), True)
 
 			Case $g_hCombo_MainTopUpDays
-				Local $sSelected = GUICtrlRead($g_hCombo_MainTopUpDays)
-				If StringInStr($sSelected, "(") Then
-					Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
-					If $iDays > 0 Then
-						If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
-						_UpdateQR_TopUp($iDays)
+			Local $sSelected = GUICtrlRead($g_hCombo_MainTopUpDays)
+			If StringInStr($sSelected, "(") Then
+				Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
+				If $iDays > 0 Then
+					; --- XỬ LÝ KIỂM TRA MÃ Ở ĐÂY ---
+					Local $iPrice = 50000 ; Giá gốc
+					Local $sPromoCode = InputBox("Mã Gia Hạn", "Nhập Mã Máy hoặc Mã Khuyến Mãi (nếu có)." & @CRLF & "Để trống nếu bạn không có mã:", "", "", 350, 150)
+
+					; CÁCH ĐẶT MÃ: Sếp có thể đổi "VIP20K" thành bất cứ mã nào sếp muốn.
+					; Nếu sếp muốn mã khuyến mãi PHẢI LÀ MÃ MÁY (HWID) của khách, thay "VIP20K" bằng $g_sHWID
+					If $sPromoCode = "VIP20K" Then
+						$iPrice = 20000
+						MsgBox(64, "Thành công", "Áp dụng giá khuyến mãi: 20.000đ/ngày!")
+					ElseIf $sPromoCode <> "" Then
+						MsgBox(16, "Lỗi", "Mã không hợp lệ! Tool sẽ áp dụng mức giá gốc 50.000đ/ngày.")
 					EndIf
-					_GUICtrlComboBox_SetCurSel(GUICtrlGetHandle($g_hCombo_MainTopUpDays), -1)
+
+					If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
+					_UpdateQR_TopUp($iDays, $iPrice) ; Truyền giá tiền vào hàm vẽ QR
+					; -------------------------------
 				EndIf
+				_GUICtrlComboBox_SetCurSel(GUICtrlGetHandle($g_hCombo_MainTopUpDays), -1)
+			EndIf
 
 			Case $g_hButton_Start
 				If $g_bIsRunning Then
@@ -646,8 +660,22 @@ Func _ProcessGUIMessages()
 			If StringInStr($sSelected, "(") Then
 				Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
 				If $iDays > 0 Then
+					; --- XỬ LÝ KIỂM TRA MÃ Ở ĐÂY ---
+					Local $iPrice = 50000 ; Giá gốc
+					Local $sPromoCode = InputBox("Mã Gia Hạn", "Nhập Mã Máy hoặc Mã Khuyến Mãi (nếu có)." & @CRLF & "Để trống nếu bạn không có mã:", "", "", 350, 150)
+
+					; CÁCH ĐẶT MÃ: Sếp có thể đổi "VIP20K" thành bất cứ mã nào sếp muốn.
+					; Nếu sếp muốn mã khuyến mãi PHẢI LÀ MÃ MÁY (HWID) của khách, thay "VIP20K" bằng $g_sHWID
+					If $sPromoCode = "VIP20K" Then
+						$iPrice = 20000
+						MsgBox(64, "Thành công", "Áp dụng giá khuyến mãi: 20.000đ/ngày!")
+					ElseIf $sPromoCode <> "" Then
+						MsgBox(16, "Lỗi", "Mã không hợp lệ! Tool sẽ áp dụng mức giá gốc 50.000đ/ngày.")
+					EndIf
+
 					If $g_hTopUpGUI = 0 Then _ShowTopUp_Modeless()
-					_UpdateQR_TopUp($iDays)
+					_UpdateQR_TopUp($iDays, $iPrice) ; Truyền giá tiền vào hàm vẽ QR
+					; -------------------------------
 				EndIf
 				_GUICtrlComboBox_SetCurSel(GUICtrlGetHandle($g_hCombo_MainTopUpDays), -1)
 			EndIf
@@ -3115,11 +3143,8 @@ Func _ShowExpiryDialog($sExpiryDate, $sHWID)
 	If $iResult == 0 Then Exit
 	Return True
 EndFunc   ;==>_ShowExpiryDialog
-; =====================================================================
-; HÀM VẼ LẠI MÃ QR CHO BẢNG THANH TOÁN CHÍNH (KHI HẾT HẠN)
-; =====================================================================
-Func _UpdateQR_Payment($oBrowser, $iDays, $sHWID, $hLabelPrice)
-	Local $iAmount = $iDays * 50000 ; 1 ngày = 50.000đ
+Func _UpdateQR_Payment($oBrowser, $iDays, $sHWID, $hLabelPrice, $iPricePerDay = 50000)
+	Local $iAmount = $iDays * $iPricePerDay ; Đã đổi từ số cứng 50000 thành biến
 	Local $sBankId = "MB"
 	Local $sAccountNo = "0986071012"
 	Local $sAccountName = "NGUYEN NGOC DUY"
@@ -3130,7 +3155,6 @@ Func _UpdateQR_Payment($oBrowser, $iDays, $sHWID, $hLabelPrice)
 	; ---> BƠM SỐ TIỀN TRỰC QUAN RA MÀN HÌNH <---
 	GUICtrlSetData($hLabelPrice, "👇 Mã QR đang ở mức giá: " & _FormatNumber($iAmount) & " VNĐ 👇")
 
-	; Sinh link mã QR gắn cứng số tiền theo ngày
 	Local $sQrUrl = "https://qr.sepay.vn/img?bank=" & $sBankId & "&acc=" & $sAccountNo & "&amount=" & $iAmount & "&des=" & $sContentUrl & "&name=" & $sNameUrl
 
 	$oBrowser.navigate("about:blank")
@@ -3144,7 +3168,6 @@ Func _UpdateQR_Payment($oBrowser, $iDays, $sHWID, $hLabelPrice)
 	$oBrowser.document.write($sHtml)
 	$oBrowser.document.close()
 EndFunc
-
 ; =====================================================================
 ; GIAO DIỆN THANH TOÁN CHÍNH (KHI HẾT HẠN / MỞ TOOL LẦN ĐẦU)
 ; =====================================================================
@@ -3175,10 +3198,20 @@ Func _ShowDailyPaymentDialog($sHWID, $iAmount)
 	Local $hComboDays = GUICtrlCreateCombo("1 Ngày (50.000đ)", 230, 67, 170, 25, 0x0003)
 	GUICtrlSetData($hComboDays, "2 Ngày (100.000đ)|3 Ngày (150.000đ)|7 Ngày (350.000đ)|15 Ngày (750.000đ)|30 Ngày (1.500.000đ)")
 	GUICtrlSetFont($hComboDays, 10, 700)
+	; --- THÊM Ô NHẬP MÃ KHUYẾN MÃI Ở ĐÂY ---
+	GUICtrlCreateLabel("Mã khuyến mãi:", 40, 105, 120, 20)
+	GUICtrlSetFont(-1, 10, 600)
+	GUICtrlSetColor(-1, 0xFFFFFF)
+	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	; --- KHỞI TẠO KHUNG QR VÀ DÒNG BÁO GIÁ TRỰC QUAN ---
+	Local $hInputPromo = GUICtrlCreateInput("", 160, 102, 100, 25)
+	Local $hBtnPromo = GUICtrlCreateButton("Áp Dụng", 270, 101, 80, 27)
+
+	Local $iCurrentPrice = 50000 ; Biến lưu giá tạm thời của bảng này
+
+	; Cập nhật dòng ActiveX xuống một chút để nhường không gian cho ô nhập mã
 	Local $oIE = ObjCreate("Shell.Explorer.2")
-	Local $hActiveX = GUICtrlCreateObj($oIE, 85, 110, 280, 280)
+	Local $hActiveX = GUICtrlCreateObj($oIE, 85, 140, 280, 250) ; Y dời xuống 140
 
 	Local $hLabel_QRPrice = GUICtrlCreateLabel("", 10, 400, 430, 25, $SS_CENTER)
 	GUICtrlSetFont(-1, 12, 800)
@@ -3219,11 +3252,23 @@ Func _ShowDailyPaymentDialog($sHWID, $iAmount)
 		If $aMsg[1] = $hPayGUI Then
 			If $aMsg[0] = $hBtnCloseX Or $aMsg[0] = $GUI_EVENT_CLOSE Then
 				ExitLoop
-			ElseIf $aMsg[0] = $hComboDays Then
+			ElseIf $aMsg[0] = $hComboDays Or $aMsg[0] = $hBtnPromo Then
+
+				; XỬ LÝ NÚT BẤM ÁP DỤNG MÃ KHUYẾN MÃI
+				If $aMsg[0] = $hBtnPromo Then
+					If GUICtrlRead($hInputPromo) = "VIP20K" Then
+						$iCurrentPrice = 20000
+						MsgBox(64, "Thành công", "Đã áp dụng mã! Giá giảm còn 20.000đ/ngày.", 2, $hPayGUI)
+					Else
+						$iCurrentPrice = 50000
+						MsgBox(16, "Lỗi", "Mã khuyến mãi không đúng!", 2, $hPayGUI)
+					EndIf
+				EndIf
+
+				; Vẽ lại mã QR theo ngày và giá tiền mới
 				Local $sSelected = GUICtrlRead($hComboDays)
-				; Tách đúng con số đầu tiên
 				Local $iDays = Number(StringRegExpReplace($sSelected, "^(\d+).*", "$1"))
-				If $iDays > 0 Then _UpdateQR_Payment($oIE, $iDays, $sHWID, $hLabel_QRPrice) ; Kích hoạt đổi QR và text giá tiền
+				If $iDays > 0 Then _UpdateQR_Payment($oIE, $iDays, $sHWID, $hLabel_QRPrice, $iCurrentPrice)
 			EndIf
 		EndIf
 
@@ -4823,11 +4868,8 @@ Func _WaitManualAction_Pro($sMessage = "Vui lòng thao tác trên web, sau đó 
 	GUIDelete($hWaitGUI)
 	$hWaitGUI = 0
 EndFunc   ;==>_WaitManualAction_Pro
-; =====================================================================
-; HÀM 1: CẬP NHẬT MÃ QR THEO SỐ NGÀY (BẢNG NẠP THÊM)
-; =====================================================================
-Func _UpdateQR_TopUp($iDays)
-	Local $iAmount = $iDays * 50000
+Func _UpdateQR_TopUp($iDays, $iPricePerDay = 50000)
+	Local $iAmount = $iDays * $iPricePerDay ; Đã đổi từ số cứng 50000 thành biến
 	Local $sBankId = "MB"
 	Local $sAccountNo = "0986071012"
 	Local $sAccountName = "NGUYEN NGOC DUY"
@@ -4852,7 +4894,6 @@ Func _UpdateQR_TopUp($iDays)
 	$g_hObj_TopUpQR.document.write($sHtml)
 	$g_hObj_TopUpQR.document.close()
 EndFunc
-
 ; =====================================================================
 ; HÀM 2: GIAO DIỆN BẢNG NẠP THÊM CỘNG DỒN (ĐÃ XÓA MENU BÊN TRONG)
 ; =====================================================================
