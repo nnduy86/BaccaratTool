@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.3" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.4" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -2032,14 +2032,12 @@ Func _PerformBet($sBetOn, $fAmountToBet)
 	Return True
 EndFunc
 Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
-	; 1. Tính toán danh sách chip cần dùng (Đã gom nhóm)
 	Local $aClickQueue = _CalculateOptimalClicks($fAmount)
 	If @error Then Return False
 
 	Local $iTotalSteps = UBound($aClickQueue)
 	If $iTotalSteps = 0 Then Return True
 
-	; --- LOGIC MỚI: TÍNH TỔNG SỐ LẦN CLICK ĐỂ ĐIỀU CHỈNH TỐC ĐỘ ---
 	Local $iTotalClicks = 0
 	For $i = 0 To $iTotalSteps - 1
 		$iTotalClicks += $aClickQueue[$i][2]
@@ -2047,57 +2045,106 @@ Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 
 	_UpdateStatus("Đang cược " & _FormatNumber($fAmount) & "...")
 
+	; =================================================================
+	; LẤY TỐC ĐỘ SẾP CÀI ĐẶT TRÊN GIAO DIỆN LÀM TIÊU CHUẨN
+	; =================================================================
 	Local $iBaseDelay = $g_iClickDelay
-	; Đảm bảo cửa sổ game đang active
-	WinActivate($hGameWin)
 
-	; --- LOGIC NGƯỜI THẬT: GIẢ VỜ SUY NGHĨ NẾU CƯỢC NHỎ ---
-	; Nếu tổng số click <= 3 (cược nhỏ), random suy nghĩ từ 1s đến 2.5s
-	; Nếu gấp thếp (click nhiều), sẽ bỏ qua suy nghĩ để đánh nhanh cho kịp giờ
-	If $iTotalClicks <= 3 Then
-		Local $iThinkTime = Random(1000, 2500, 1)
-		_UpdateStatus("Đang suy nghĩ... (" & Round($iThinkTime / 1000, 1) & "s)")
-		Sleep($iThinkTime)
+	If Not WinActive($hGameWin) Then
+		WinSetState($hGameWin, "", @SW_RESTORE)
+		WinActivate($hGameWin)
+		Sleep(100) ; Giảm thời gian chờ phục hồi cửa sổ
 	EndIf
 
-	; 2. Duyệt qua từng loại chip cần dùng
+	; Đã xóa bỏ cái đoạn giả vờ "suy nghĩ 2 giây" lúc trước.
+	; Chỉ nghỉ 1 nhịp siêu ngắn trước khi đưa tay ra lấy chip.
+	Sleep($iBaseDelay * 2)
+
 	For $i = 0 To $iTotalSteps - 1
 		Local $iChipX = $aClickQueue[$i][0]
 		Local $iChipY = $aClickQueue[$i][1]
 		Local $iCount = $aClickQueue[$i][2]
 
-		; BƯỚC A: RA KHAY LẤY CHIP (Bán kính random siêu nhỏ 3px để không lem chip khác)
+		; Bấm lấy Chip: Có Random tọa độ 3 pixel để không lem ra ngoài
 		_SingleClick($hGameWin, $iChipX, $iChipY, 3)
+		Sleep($iBaseDelay + Random(10, 30, 1))
 
-		; Nghỉ một chút để game kịp nhận diện chip đổi màu, random từ 50ms - 150ms
-		Sleep($iBaseDelay + Random(50, 150, 1))
-
-		; BƯỚC B: RA Ô CƯỢC VÀ CLICK N LẦN
-		; Di chuyển chuột đến ô cược trước (nếu dùng chế độ Mouse)
 		If $g_sClickMode = "Mouse" Then
+			; Di chuyển chuột có Random tọa độ
 			MouseMove($aBetAreaPos[0] + Random(-10, 10, 1), $aBetAreaPos[1] + Random(-10, 10, 1), $g_iMouseSpeed)
 		EndIf
 
 		For $j = 1 To $iCount
 			If Not $g_bIsRunning Then Return False
 
-			; Click tại chỗ với bán kính random 10px (ô cược rộng nên random thoải mái)
+			; Click cược: Có Random tọa độ 10 pixel
 			_SingleClick($hGameWin, $aBetAreaPos[0], $aBetAreaPos[1], 10)
 
-			; Tính toán delay nhả chuột: Click nhiều thì delay ngắn, click ít thì delay dài
+			; ========================================================
+			; AI TỰ ĐỘNG TÍNH TOÁN THỜI GIAN NHẢ NHỊP
+			; ========================================================
 			Local $iCurrentDelay = $iBaseDelay
-			If $iTotalClicks > 10 Then
-				$iCurrentDelay = Random($iBaseDelay * 0.5, $iBaseDelay, 1) ; Nhanh hơn để kịp giờ
+
+			If $iTotalClicks >= 10 Then
+				; Gấp thếp nặng -> Cược như máy khâu để kịp giờ
+				$iCurrentDelay = Random($iBaseDelay * 0.3, $iBaseDelay * 0.7, 1)
+			ElseIf $iTotalClicks >= 5 Then
+				; Cược vừa -> Nhanh vừa phải
+				$iCurrentDelay = Random($iBaseDelay * 0.8, $iBaseDelay * 1.2, 1)
 			Else
-				$iCurrentDelay = Random($iBaseDelay, $iBaseDelay * 1.5, 1) ; Chậm rãi ngẫu nhiên
+				; Cược lệnh đầu -> Thong thả như người thật
+				$iCurrentDelay = Random($iBaseDelay, $iBaseDelay * 1.5, 1)
 			EndIf
+
+			; Ép giới hạn: Không bao giờ click dưới 10ms (Game sẽ coi là bot)
+			If $iCurrentDelay < 10 Then $iCurrentDelay = 10
 			Sleep($iCurrentDelay)
 		Next
 	Next
-
 	Return True
 EndFunc   ;==>_ClickChipsForAmount
 
+
+Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
+	Local $iRandX = $iX
+	Local $iRandY = $iY
+
+	; TỌA ĐỘ NHẢY MÚA NGẪU NHIÊN 100% NHƯ NGƯỜI THẬT
+	If $iRadius > 0 Then
+		$iRandX = $iX + Random(-$iRadius, $iRadius, 1)
+		$iRandY = $iY + Random(-$iRadius, $iRadius, 1)
+	EndIf
+
+	If $g_sClickMode = "Control" Then
+		Local $aWinPos = WinGetPos($hWnd)
+		Local $aClientSize = WinGetClientSize($hWnd)
+		Local $iRelX = $iRandX
+		Local $iRelY = $iRandY
+
+		If IsArray($aWinPos) And IsArray($aClientSize) Then
+			Local $iBorderWidth = ($aWinPos[2] - $aClientSize[0]) / 2
+			Local $iTitleHeight = $aWinPos[3] - $aClientSize[1] - $iBorderWidth
+
+			$iRelX = $iRandX - $aWinPos[0] - $iBorderWidth
+			$iRelY = $iRandY - $aWinPos[1] - $iTitleHeight
+		EndIf
+
+		ControlClick($hWnd, "", "", "left", 1, $iRelX, $iRelY)
+	Else
+		If Not WinActive($hWnd) Then
+			WinSetState($hWnd, "", @SW_RESTORE)
+			WinActivate($hWnd)
+			Sleep(50)
+		EndIf
+
+		MouseMove($iRandX, $iRandY, $g_iMouseSpeed)
+
+		; Giả lập độ nặng của phím chuột (Ngón tay bấm xuống rồi mới nẩy lên)
+		MouseDown("left")
+		Sleep(Random(15, 35, 1))
+		MouseUp("left")
+	EndIf
+EndFunc   ;==>_SingleClick
 Func _CalculateOptimalClicks($fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
 	Local $iActiveCount = 0
@@ -2148,27 +2195,6 @@ Func _CalculateOptimalClicks($fTargetAmount)
 
 	Return $aClicksQueue
 EndFunc   ;==>_CalculateOptimalClicks
-
-Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
-	; Random tọa độ trong phạm vi bán kính cho phép
-	Local $iRandX = $iX
-	Local $iRandY = $iY
-
-	If $iRadius > 0 Then
-		$iRandX = $iX + Random(-$iRadius, $iRadius, 1)
-		$iRandY = $iY + Random(-$iRadius, $iRadius, 1)
-	EndIf
-
-	; Nếu chọn chế độ Control (Nhanh - ẩn chuột)
-	If $g_sClickMode = "Control" Then
-		ControlClick($hWnd, "", "", "left", 1, $iRandX, $iRandY)
-	Else
-		; Nếu chọn chế độ Mouse (Tương thích - dùng chuột thật)
-		WinActivate($hWnd)
-		MouseClick("left", $iRandX, $iRandY, 1, $g_iMouseSpeed)
-	EndIf
-EndFunc   ;==>_SingleClick
-
 
 Func _ScanAreaForResult()
 	Local $hWnd = $g_hTargetGameWin
@@ -4331,9 +4357,37 @@ Func _RefreshVolumeDisplay()
 				$fDisplayVol = Number(IniRead($sFileVolume, "Total", "Lifetime", "0"))
 		EndSwitch
 	EndIf
-	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($fDisplayVol) & " VND")
+
+	; ========================================================
+	; TỰ ĐỘNG TÍNH VÀ HIỂN THỊ PHÍ HOA HỒNG LÊN GIAO DIỆN
+	; ========================================================
+	Local $fFee = Round($fDisplayVol * 0.005)
+	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($fDisplayVol) & " đ (Phí: " & _FormatNumber($fFee) & " đ)")
 EndFunc   ;==>_RefreshVolumeDisplay
 
+Func _SyncLiveDashboard($fLiveBalance, $fLiveProfit, $fLiveVolume)
+	GUICtrlSetData($g_hLabel_CurrentBalance, _FormatNumber($fLiveBalance) & " đ")
+	GUICtrlSetColor($g_hLabel_CurrentBalance, 0x0000FF)
+
+	If $fLiveProfit >= 0 Then
+		GUICtrlSetData($g_hLabel_Profit, "+" & _FormatNumber($fLiveProfit) & " đ")
+		GUICtrlSetColor($g_hLabel_Profit, 0x006400)
+		GUICtrlSetData($g_hLabel_TotalProfitStats, "+" & _FormatNumber($fLiveProfit) & " đ")
+		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0x006400)
+	Else
+		GUICtrlSetData($g_hLabel_Profit, _FormatNumber($fLiveProfit) & " đ")
+		GUICtrlSetColor($g_hLabel_Profit, 0xFF0000)
+		GUICtrlSetData($g_hLabel_TotalProfitStats, _FormatNumber($fLiveProfit) & " đ")
+		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0xFF0000)
+	EndIf
+
+	; ========================================================
+	; BƠM SỐ VOLUME KÈM THEO PHÍ HOA HỒNG 0.5% (TỨC THÌ)
+	; ========================================================
+	Local $fLiveFee = Round($fLiveVolume * 0.005)
+	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($fLiveVolume) & " đ (Phí: " & _FormatNumber($fLiveFee) & " đ)")
+	GUICtrlSetColor($g_hLabel_TotalVolume, 0x8A2BE2)
+EndFunc   ;==>_SyncLiveDashboard
 Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 	$g_fUnsyncedVolume += $fBetAmount ; <--- Dòng gom tiền vừa cược
 
@@ -4391,36 +4445,6 @@ Func _LoadAllVirtualQLVs()
 		Next
 	EndIf
 EndFunc   ;==>_LoadAllVirtualQLVs
-; =========================================================================
-; ĐỘNG CƠ BƠM SỐ LIVE TỨC THÌ (DÀNH CHO BẢNG THÔNG TIN GÓC PHẢI)
-; =========================================================================
-Func _SyncLiveDashboard($fLiveBalance, $fLiveProfit, $fLiveVolume)
-	; 1. Bơm Số Dư Hiện Tại (Màu Xanh Dương)
-	GUICtrlSetData($g_hLabel_CurrentBalance, _FormatNumber($fLiveBalance) & " đ")
-	GUICtrlSetColor($g_hLabel_CurrentBalance, 0x0000FF)
-
-	; 2. Bơm Lãi/Lỗ Phiên Này (Đổi màu thông minh)
-	If $fLiveProfit >= 0 Then
-		GUICtrlSetData($g_hLabel_Profit, "+" & _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_Profit, 0x006400) ; Xanh Lá đậm (Đang Lãi)
-	Else
-		GUICtrlSetData($g_hLabel_Profit, _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_Profit, 0xFF0000) ; Đỏ chót (Đang Âm)
-	EndIf
-
-	; 3. Bơm Tổng Volume (Màu Tím Bào Cỏ)
-	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($fLiveVolume) & " đ")
-	GUICtrlSetColor($g_hLabel_TotalVolume, 0x8A2BE2)
-
-	; 4. Bơm Ô Tra Cứu Lãi/Lỗ Tức Thì (Đổi màu Xanh/Đỏ)
-	If $fLiveProfit >= 0 Then
-		GUICtrlSetData($g_hLabel_TotalProfitStats, "+" & _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0x006400)
-	Else
-		GUICtrlSetData($g_hLabel_TotalProfitStats, _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0xFF0000)
-	EndIf
-EndFunc   ;==>_SyncLiveDashboard
 ; =========================================================================
 ; HÀM AI TỰ ĐỘNG ĐỌC DỮ LIỆU VÀ PHÂN TÍCH RA TIẾNG VIỆT
 ; =========================================================================
@@ -4803,30 +4827,44 @@ EndFunc
 ; ====================================================================
 ; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (LƯỚI LỌC KÍCH THƯỚC CHỐNG CỬA SỔ MA)
 ; ====================================================================
+; ====================================================================
+; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (BẮT TỌA ĐỘ VẬT LÝ ĐỂ CHỐNG CỬA SỔ MA)
+; ====================================================================
 Func _GetRealGameWindow($sClass)
+	; 1. LƯỚI LỌC TUYỆT ĐỐI: Dùng tọa độ nút Banker để túm cổ chính xác cửa sổ game
+	Local $iBankerX = Number(GUICtrlRead($g_hInput_BankerX))
+	Local $iBankerY = Number(GUICtrlRead($g_hInput_BankerY))
+
+	If $iBankerX > 0 And $iBankerY > 0 Then
+		Local $tPoint = DllStructCreate("long X;long Y")
+		DllStructSetData($tPoint, "X", $iBankerX)
+		DllStructSetData($tPoint, "Y", $iBankerY)
+		Local $hWndPoint = _WinAPI_WindowFromPoint($tPoint)
+		If $hWndPoint <> 0 Then
+			Local $hTopLevel = _WinAPI_GetAncestor($hWndPoint, 2) ; 2 = $GA_ROOT (Cửa sổ mẹ)
+			If $hTopLevel <> 0 And BitAND(WinGetState($hTopLevel), 2) Then
+				Return $hTopLevel
+			EndIf
+		EndIf
+	EndIf
+
+	; 2. DỰ PHÒNG: Nếu chưa cài đặt nút Banker thì lọc theo Size
 	Local $aList = WinList("[CLASS:" & $sClass & "]")
 	Local $hWndReal = 0
 	Local $iMaxWidth = 0
 
 	For $i = 1 To $aList[0][0]
-		; Bắt buộc 1: Cửa sổ phải có Tiêu đề & Đang hiển thị
 		If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), 2) Then
 			Local $aPos = WinGetPos($aList[$i][1])
-
-			; LƯỚI LỌC THÉP: Kích thước cửa sổ thật phải LỚN HƠN 300x300 pixel
-			; (Bọn cửa sổ ma của Chrome thường có size 0x0 hoặc 1x1)
 			If IsArray($aPos) And $aPos[2] > 300 And $aPos[3] > 300 Then
-
-				; Ưu tiên bắt lấy cái cửa sổ nào TO NHẤT (chắc chắn là giao diện chính)
 				If $aPos[2] > $iMaxWidth Then
 					$iMaxWidth = $aPos[2]
 					$hWndReal = $aList[$i][1]
 				EndIf
-
 			EndIf
 		EndIf
 	Next
 
 	If $hWndReal <> 0 Then Return $hWndReal
-	Return WinGetHandle("[CLASS:" & $sClass & "]") ; Cứu cánh dự phòng
+	Return WinGetHandle("[CLASS:" & $sClass & "]")
 EndFunc
