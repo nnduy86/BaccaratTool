@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.0" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.1" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -445,7 +445,7 @@ EndFunc   ;==>_MainLoop
 ; HÀM VÒNG LẶP PHỤ (KHI TOOL ĐANG QUÉT GAME)
 ; ==================================================================================================
 Func _ProcessGUIMessages()
-	AdlibRegister("_SyncVolumeToServer", 180000)
+	;AdlibRegister("_SyncVolumeToServer", 180000)
 	Local $aMsg = GUIGetMsg(1)
 
 	Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
@@ -4313,6 +4313,11 @@ Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 
 	_RefreshVolumeDisplay()
 	_RefreshProfitDisplay()
+
+    ; ============================================
+    ; BẮN VOLUME TỨC THÌ LÊN GOOGLE SHEET Ở ĐÂY
+    ; ============================================
+	_SyncVolumeToServer()
 EndFunc   ;==>_UpdateDailyStats
 ; --- HÚT TOÀN BỘ CẤU HÌNH QLV VÀO TRẠM MÔ PHỎNG ---
 ; --- HÚT TOÀN BỘ CẤU HÌNH QLV VÀO TRẠM MÔ PHỎNG ---
@@ -4492,7 +4497,11 @@ Func _SyncVolumeToServer()
 	If $g_fUnsyncedVolume > 0 Then
 		Local $fVolToSend = $g_fUnsyncedVolume
 		$g_fUnsyncedVolume = 0 ; Reset để tránh gửi trùng
+
 		Local $sUrl = $g_sAppsScriptBaseURL & "?action=add_volume&hwid=" & $g_sHWID & "&vol=" & $fVolToSend & "&nocache=" & TimerInit()
-		InetRead($sUrl, 3) ; Gửi ngầm không đơ tool
+
+		; Dùng InetGet với cờ 1,1 để BẮN NGẦM 100%.
+		; Tool quăng cục dữ liệu lên mạng xong là đi làm việc khác ngay lập tức, không thèm đứng lại chờ Google trả lời!
+		InetGet($sUrl, @TempDir & "\vol_sync.tmp", 1, 1)
 	EndIf
 EndFunc
