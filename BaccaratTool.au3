@@ -396,6 +396,18 @@ Func _MainLoop()
 				EndIf
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
+			Case $g_hCombo_Profiles, $g_hCombo_Profiles_Main
+				_HandleProfileChange($aMsg[0])
+			Case $g_hCombo_QLV_Presets
+				_HandleQLVPresetChange()
+			Case $g_hButton_SaveQLV
+				_SaveCustomQLV()
+			Case $g_hButton_DeleteQLV
+				_DeleteCustomQLV()
+
+			; ==========================================
+			; NÚT LẤY TỌA ĐỘ VÀ NÚT LẤY MÀU SẮC
+			; ==========================================
 			Case $g_hButton_GetBankerPos
 				_GetCoords_Fast($g_hInput_BankerX, $g_hInput_BankerY)
 			Case $g_hButton_GetPlayerPos
@@ -408,14 +420,18 @@ Func _MainLoop()
 				_GetCoords_Fast($g_hInput_BetTimeX1, $g_hInput_BetTimeY1)
 			Case $g_hButton_GetBetTimeBR
 				_GetCoords_Fast($g_hInput_BetTimeX2, $g_hInput_BetTimeY2)
-			Case $g_hCombo_Profiles, $g_hCombo_Profiles_Main
-				_HandleProfileChange($aMsg[0])
-			Case $g_hCombo_QLV_Presets
-				_HandleQLVPresetChange()
-			Case $g_hButton_SaveQLV
-				_SaveCustomQLV()
-			Case $g_hButton_DeleteQLV
-				_DeleteCustomQLV()
+			Case $g_hButton_GetBankerColor
+				_GetColor_Fast($g_hInput_BankerColor)
+			Case $g_hButton_GetPlayerColor
+				_GetColor_Fast($g_hInput_PlayerColor)
+			Case $g_hButton_GetTieColor
+				_GetColor_Fast($g_hInput_TieColor)
+			Case $g_hButton_GetBetTimeColor
+				_GetColor_Fast($g_hInput_BetTimeColor)
+			Case $g_hButton_TestColor_Result
+				_HandleTestColorButton("Result")
+			Case $g_hButton_TestColor_Timer
+				_HandleTestColorButton("Timer")
 		EndSwitch
 
 		For $i = 0 To 4
@@ -3094,38 +3110,27 @@ Func _LoadSessionState()
 	_UpdateBalanceLabel()
 	_UpdateTotalVolumeLabel()
 EndFunc   ;==>_LoadSessionState
-; --- HÀM LẤY TỌA ĐỘ TỪ BIẾN TẠM (PHÍM S) ---
 Func _GetCoords_Fast($hInputX, $hInputY)
-	; Kiểm tra xem người dùng đã bấm S chưa (Nếu tọa độ là 0,0 thì cảnh báo)
 	If $g_iTempX = 0 And $g_iTempY = 0 Then
-		ToolTip("⚠️ Chưa có dữ liệu! Hãy di chuột vào điểm cần lấy và bấm phím 'S' trước.", MouseGetPos()[0], MouseGetPos()[1], "Cảnh báo", 2, 1)
-		Sleep(1500)
-		ToolTip("")
+		MsgBox(48, "Cảnh báo", "Sếp chưa di chuột vào điểm cần lấy và bấm phím ` (gần số 1) !")
 		Return
 	EndIf
 
-	; Dán dữ liệu từ biến tạm vào ô Input
 	GUICtrlSetData($hInputX, $g_iTempX)
 	GUICtrlSetData($hInputY, $g_iTempY)
 
-	; Kích hoạt cờ báo hiệu cần lưu ngay
 	$g_bNeedAutoSave = True
 	$g_hAutoSaveTimer = TimerInit()
 EndFunc   ;==>_GetCoords_Fast
 
-; --- HÀM LẤY MÀU TỪ BIẾN TẠM (PHÍM S) ---
 Func _GetColor_Fast($hInputControl)
-	If $g_iTempColor = 0 Then
-		ToolTip("⚠️ Chưa có dữ liệu! Hãy di chuột vào màu cần lấy và bấm phím 'S' trước.", MouseGetPos()[0], MouseGetPos()[1], "Cảnh báo", 2, 1)
-		Sleep(1500)
-		ToolTip("")
+	If $g_iTempX = 0 And $g_iTempY = 0 Then
+		MsgBox(48, "Cảnh báo", "Sếp chưa di chuột vào màu cần lấy và bấm phím ` (gần số 1) !")
 		Return
 	EndIf
 
-	; Dán mã màu Hex vào ô Input
 	GUICtrlSetData($hInputControl, "0x" & Hex($g_iTempColor, 6))
 
-	; Kích hoạt cờ báo hiệu cần lưu ngay
 	$g_bNeedAutoSave = True
 	$g_hAutoSaveTimer = TimerInit()
 EndFunc   ;==>_GetColor_Fast
