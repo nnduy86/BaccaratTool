@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.4" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.5" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -333,6 +333,15 @@ Func _MainLoop()
 		Switch $aMsg[0]
 			Case 0
 				ContinueLoop
+
+			; =====================================================
+			; THÊM ĐOẠN NÀY ĐỂ TỰ ĐỘNG LƯU KHI CHỌN KIỂU CLICK
+			; =====================================================
+			Case $g_hRadio_ClickMode_Control_Main, $g_hRadio_ClickMode_Mouse_Main
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
+			; =====================================================
+
 			Case $g_hCombo_VolumeFilter, $g_hDate_VolumeFilter
 				_RefreshVolumeDisplay()
 			Case $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter
@@ -1338,8 +1347,12 @@ Func _LoadSelectedProfile($sProfileName)
 	GUICtrlSetData($g_hInput_ClickDelay, IniRead($g_sIniPath, "Settings", "ClickDelay", "10"))
 	GUICtrlSetData($g_hInput_ClickDelay_Main, IniRead($g_sIniPath, "Settings", "ClickDelay", "10"))
 	GUICtrlSetData($g_hInput_MouseSpeed, IniRead($g_sIniPath, "Settings", "MouseSpeed", "10"))
+
+	; ========================================================
+	; ĐỌC VÀ KHÔI PHỤC ĐÚNG TRẠNG THÁI NÚT CLICK
+	; ========================================================
 	Local $sClickMode = IniRead($g_sIniPath, "Settings", "ClickMode", "Control")
-	If $sClickMode = "Mouse" Then
+	If $sClickMode == "Mouse" Then
 		GUICtrlSetState($g_hRadio_ClickMode_Mouse, $GUI_CHECKED)
 		GUICtrlSetState($g_hRadio_ClickMode_Mouse_Main, $GUI_CHECKED)
 	Else
@@ -2044,20 +2057,18 @@ Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 	Next
 
 	_UpdateStatus("Đang cược " & _FormatNumber($fAmount) & "...")
-
-	; =================================================================
-	; LẤY TỐC ĐỘ SẾP CÀI ĐẶT TRÊN GIAO DIỆN LÀM TIÊU CHUẨN
-	; =================================================================
 	Local $iBaseDelay = $g_iClickDelay
 
+	; =================================================================
+	; BÍ QUYẾT 1: CHỈ KÉO CỬA SỔ LÊN NẾU NÓ ĐANG THỰC SỰ NẰM DƯỚI TASKBAR
+	; =================================================================
 	If Not WinActive($hGameWin) Then
-		WinSetState($hGameWin, "", @SW_RESTORE)
+		; Số 16 là mã trạng thái Minimized (Ẩn dưới Taskbar). Chống bệnh tự thu nhỏ!
+		If BitAND(WinGetState($hGameWin), 16) Then WinSetState($hGameWin, "", @SW_RESTORE)
 		WinActivate($hGameWin)
-		Sleep(100) ; Giảm thời gian chờ phục hồi cửa sổ
+		Sleep(100)
 	EndIf
 
-	; Đã xóa bỏ cái đoạn giả vờ "suy nghĩ 2 giây" lúc trước.
-	; Chỉ nghỉ 1 nhịp siêu ngắn trước khi đưa tay ra lấy chip.
 	Sleep($iBaseDelay * 2)
 
 	For $i = 0 To $iTotalSteps - 1
@@ -2065,38 +2076,26 @@ Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 		Local $iChipY = $aClickQueue[$i][1]
 		Local $iCount = $aClickQueue[$i][2]
 
-		; Bấm lấy Chip: Có Random tọa độ 3 pixel để không lem ra ngoài
 		_SingleClick($hGameWin, $iChipX, $iChipY, 3)
 		Sleep($iBaseDelay + Random(10, 30, 1))
 
 		If $g_sClickMode = "Mouse" Then
-			; Di chuyển chuột có Random tọa độ
 			MouseMove($aBetAreaPos[0] + Random(-10, 10, 1), $aBetAreaPos[1] + Random(-10, 10, 1), $g_iMouseSpeed)
 		EndIf
 
 		For $j = 1 To $iCount
 			If Not $g_bIsRunning Then Return False
-
-			; Click cược: Có Random tọa độ 10 pixel
 			_SingleClick($hGameWin, $aBetAreaPos[0], $aBetAreaPos[1], 10)
 
-			; ========================================================
-			; AI TỰ ĐỘNG TÍNH TOÁN THỜI GIAN NHẢ NHỊP
-			; ========================================================
 			Local $iCurrentDelay = $iBaseDelay
-
 			If $iTotalClicks >= 10 Then
-				; Gấp thếp nặng -> Cược như máy khâu để kịp giờ
 				$iCurrentDelay = Random($iBaseDelay * 0.3, $iBaseDelay * 0.7, 1)
 			ElseIf $iTotalClicks >= 5 Then
-				; Cược vừa -> Nhanh vừa phải
 				$iCurrentDelay = Random($iBaseDelay * 0.8, $iBaseDelay * 1.2, 1)
 			Else
-				; Cược lệnh đầu -> Thong thả như người thật
 				$iCurrentDelay = Random($iBaseDelay, $iBaseDelay * 1.5, 1)
 			EndIf
 
-			; Ép giới hạn: Không bao giờ click dưới 10ms (Game sẽ coi là bot)
 			If $iCurrentDelay < 10 Then $iCurrentDelay = 10
 			Sleep($iCurrentDelay)
 		Next
@@ -2109,37 +2108,36 @@ Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 	Local $iRandX = $iX
 	Local $iRandY = $iY
 
-	; TỌA ĐỘ NHẢY MÚA NGẪU NHIÊN 100% NHƯ NGƯỜI THẬT
 	If $iRadius > 0 Then
 		$iRandX = $iX + Random(-$iRadius, $iRadius, 1)
 		$iRandY = $iY + Random(-$iRadius, $iRadius, 1)
 	EndIf
 
+	If Not WinActive($hWnd) Then
+		If BitAND(WinGetState($hWnd), 16) Then WinSetState($hWnd, "", @SW_RESTORE)
+		WinActivate($hWnd)
+		Sleep(50)
+	EndIf
+
 	If $g_sClickMode = "Control" Then
-		Local $aWinPos = WinGetPos($hWnd)
-		Local $aClientSize = WinGetClientSize($hWnd)
-		Local $iRelX = $iRandX
-		Local $iRelY = $iRandY
+		Local $aOldMousePos = MouseGetPos()
 
-		If IsArray($aWinPos) And IsArray($aClientSize) Then
-			Local $iBorderWidth = ($aWinPos[2] - $aClientSize[0]) / 2
-			Local $iTitleHeight = $aWinPos[3] - $aClientSize[1] - $iBorderWidth
+		; =================================================================
+		; BÍ QUYẾT 2: KHÓA CHUỘT PHẦN CỨNG 30 MILI-GIÂY ĐỂ ĐẢM BẢO CHÍNH XÁC
+		; (Ngăn chặn tình trạng sếp rung tay làm lệch tâm cược)
+		; =================================================================
+		BlockInput(1)
 
-			$iRelX = $iRandX - $aWinPos[0] - $iBorderWidth
-			$iRelY = $iRandY - $aWinPos[1] - $iTitleHeight
-		EndIf
+		MouseMove($iRandX, $iRandY, 0)
+		MouseDown("left")
+		Sleep(Random(15, 30, 1))
+		MouseUp("left")
+		MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
 
-		ControlClick($hWnd, "", "", "left", 1, $iRelX, $iRelY)
+		BlockInput(0)
+		; =================================================================
 	Else
-		If Not WinActive($hWnd) Then
-			WinSetState($hWnd, "", @SW_RESTORE)
-			WinActivate($hWnd)
-			Sleep(50)
-		EndIf
-
 		MouseMove($iRandX, $iRandY, $g_iMouseSpeed)
-
-		; Giả lập độ nặng của phím chuột (Ngón tay bấm xuống rồi mới nẩy lên)
 		MouseDown("left")
 		Sleep(Random(15, 35, 1))
 		MouseUp("left")
