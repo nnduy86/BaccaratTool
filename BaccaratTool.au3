@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.2" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.3" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -206,11 +206,13 @@ Global $g_bIsDevMode = False ; Biến ẩn chỉ dành cho Developer
 
 Global $g_sMachineStatus = "" ; Theo dõi trạng thái máy (Mới/Đã Kích Hoạt)
 Global $g_hButton_ActivateNew = 0 ; Nút bấm kích hoạt 100k
+
+Global $g_fServerVolumeToday = 0 ; Biến lưu Volume thực tế từ máy chủ
 _Main()
 
 Func _Main()
 	If _Singleton("ToolCasino_Lock_Main", 1) = 0 Then
-		MsgBox(48, "Thông báo", "Tool đang được mở rồi! Vui lòng kiểm tra dưới thanh Taskbar.")
+		MsgBox(48, "Thông báo", "Tool đang được mở rồi!")
 		Exit
 	EndIf
 
@@ -221,6 +223,11 @@ Func _Main()
 	; Lên Server kiểm tra
 	Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
 	$g_sMachineStatus = $aLicenseInfo[0]
+
+	; ==========================================================
+	; ĐỒNG BỘ VOLUME THỰC TẾ TỪ MÁY CHỦ VỀ LƯU VÀO MÁY KHÁCH
+	; ==========================================================
+	IniWrite(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), $g_fServerVolumeToday)
 
 	; NẾU NỢ HOA HỒNG THÌ ÉP TRẢ NỢ MỚI CHO VÀO
 	If $g_sMachineStatus == "DEBT" Then
@@ -2772,9 +2779,10 @@ Func _CheckLicenseOnline($sHWID)
 	EndIf
 
 	Local $sExpiry = Json_Get($oJson, "[expiry]")
-
-	; Nhận chuỗi chứa các mã VIP hợp lệ từ Google (VD: "HK5,PP")
 	$g_sActiveVIPs = Json_Get($oJson, "[active_vips]")
+
+	; ---> ĐÓN VOLUME TỪ MÁY CHỦ BỎ VÀO BIẾN <---
+	$g_fServerVolumeToday = Number(Json_Get($oJson, "[vol_today]"))
 
 	Local $aResult[3] = [$sStatus, $sExpiry, 0]
 	Return $aResult
@@ -4793,15 +4801,32 @@ Func _DecideNextAction()
 	Return _Logic_Custom($iTotalHands, $aQLV[1], False)
 EndFunc
 ; ====================================================================
-; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (CHỐNG NHẦM CỬA SỔ ẨN CỦA CHROME)
+; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (LƯỚI LỌC KÍCH THƯỚC CHỐNG CỬA SỔ MA)
 ; ====================================================================
 Func _GetRealGameWindow($sClass)
 	Local $aList = WinList("[CLASS:" & $sClass & "]")
+	Local $hWndReal = 0
+	Local $iMaxWidth = 0
+
 	For $i = 1 To $aList[0][0]
-		; Bắt buộc cửa sổ phải CÓ TIÊU ĐỀ (khác rỗng) VÀ đang ở trạng thái HIỂN THỊ (BitAND = 2)
+		; Bắt buộc 1: Cửa sổ phải có Tiêu đề & Đang hiển thị
 		If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), 2) Then
-			Return $aList[$i][1]
+			Local $aPos = WinGetPos($aList[$i][1])
+
+			; LƯỚI LỌC THÉP: Kích thước cửa sổ thật phải LỚN HƠN 300x300 pixel
+			; (Bọn cửa sổ ma của Chrome thường có size 0x0 hoặc 1x1)
+			If IsArray($aPos) And $aPos[2] > 300 And $aPos[3] > 300 Then
+
+				; Ưu tiên bắt lấy cái cửa sổ nào TO NHẤT (chắc chắn là giao diện chính)
+				If $aPos[2] > $iMaxWidth Then
+					$iMaxWidth = $aPos[2]
+					$hWndReal = $aList[$i][1]
+				EndIf
+
+			EndIf
 		EndIf
 	Next
+
+	If $hWndReal <> 0 Then Return $hWndReal
 	Return WinGetHandle("[CLASS:" & $sClass & "]") ; Cứu cánh dự phòng
 EndFunc
