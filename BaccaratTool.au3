@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.5" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.6" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -177,7 +177,7 @@ Global $g_aCustomQLVTable[0][4] ; [Lệnh, Vốn, ThắngVề, ThuaVề]
 Global $g_iCapitalLevel = 1 ; Cấp vốn hiện tại (1, 2, 3...)
 Global $g_hInput_Blacklist       ; Ô nhập danh sách đen
 Global $g_iCycleStep = 1      ; Biến đếm bước trong chu kỳ quan sát
-Global Const $HARD_LIMIT_RAM = 9999999 ; <--- THÊM DÒNG NÀY (Giới hạn cứng bộ nhớ)
+Global Const $HARD_LIMIT_RAM = 500 ; <--- THÊM DÒNG NÀY (Giới hạn cứng bộ nhớ)
 Global $g_hEdit_ActivityLog
 Global $g_hCheckbox_Blacklist_IgnoreRunning ; <--- [MỚI] Biến Checkbox bỏ qua Blacklist khi đang chạy
 Global $g_hSim_Chk_MixMode = 0
@@ -420,20 +420,28 @@ Func _MainLoop()
 			Case $g_hCheckbox_ToggleScan
 				_ToggleScanHotkey()
 			Case $g_hCheckbox_ContinuousMode
+				; Tích Nối đuôi thì phải tắt Bám chuỗi và Du kích
 				If GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED Then
 					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED)
-					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_DISABLE)
-				Else
-					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_ENABLE)
+					GUICtrlSetState($g_hCheckbox_DuKich, $GUI_UNCHECKED)
 				EndIf
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
+
 			Case $g_hCheckbox_ReverseLogic
+				; Tích Bám chuỗi thì phải tắt Nối đuôi và Du kích
 				If GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED Then
 					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED)
-					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_DISABLE)
-				Else
-					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_ENABLE)
+					GUICtrlSetState($g_hCheckbox_DuKich, $GUI_UNCHECKED)
+				EndIf
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
+
+			Case $g_hCheckbox_DuKich
+				; Tích Du kích thì không nên dùng Nối Đuôi hay Bám chuỗi (vì phá vỡ nhịp nghỉ)
+				If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
+					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED)
+					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED)
 				EndIf
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
@@ -1983,18 +1991,18 @@ Func _AddNewHistoryEntry($sResult)
 	_Vault_AddResult($sResult)
 	_ArrayAdd($g_aDisplayHistory, $sResult)
 
+	; NẾU MẢNG ĐẦY -> XÓA TAY CŨ NHẤT ĐỂ GIẢI PHÓNG RAM VÀ ĐẨY BẢNG
 	If UBound($g_aDisplayHistory) > $HARD_LIMIT_RAM Then
 		_ArrayDelete($g_aDisplayHistory, 0)
+		; Đồng bộ lại điểm cắt đuôi nếu có
 		If $g_iHistoryCutoffIndex > 0 Then
 			$g_iHistoryCutoffIndex -= 1
 		EndIf
 	EndIf
 
 	_UpdateBPTTotals($sResult)
-
-	; Bơm kết quả vào Động cơ V8 để vẽ lại số tức thì
 	_FullBacktest()
-EndFunc   ;==>_AddNewHistoryEntry
+EndFunc
 Func _UpdateBPTTotals($sResult)
 	Switch $sResult
 		Case "B"
@@ -2105,6 +2113,9 @@ EndFunc   ;==>_ClickChipsForAmount
 
 
 Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
+	; CHỐT CHẶN: Nếu chưa cài tọa độ phỉnh (tọa độ = 0) thì bỏ qua lệnh click này
+	If $iX <= 0 Or $iY <= 0 Then Return False
+
 	Local $iRandX = $iX
 	Local $iRandY = $iY
 
@@ -2116,33 +2127,32 @@ Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 	If Not WinActive($hWnd) Then
 		If BitAND(WinGetState($hWnd), 16) Then WinSetState($hWnd, "", @SW_RESTORE)
 		WinActivate($hWnd)
-		Sleep(50)
+		Sleep(100)
 	EndIf
 
 	If $g_sClickMode = "Control" Then
 		Local $aOldMousePos = MouseGetPos()
 
-		; =================================================================
-		; BÍ QUYẾT 2: KHÓA CHUỘT PHẦN CỨNG 30 MILI-GIÂY ĐỂ ĐẢM BẢO CHÍNH XÁC
-		; (Ngăn chặn tình trạng sếp rung tay làm lệch tâm cược)
-		; =================================================================
 		BlockInput(1)
-
 		MouseMove($iRandX, $iRandY, 0)
 		MouseDown("left")
-		Sleep(Random(15, 30, 1))
+		Sleep(Random(25, 45, 1))
 		MouseUp("left")
-		MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
 
+		; === CHỐNG LỖI ẨN GAME: Bắt buộc dừng 20ms để Windows xác nhận đã Click xong ===
+		Sleep(20)
+		; ==============================================================================
+
+		MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
 		BlockInput(0)
-		; =================================================================
 	Else
 		MouseMove($iRandX, $iRandY, $g_iMouseSpeed)
 		MouseDown("left")
-		Sleep(Random(15, 35, 1))
+		Sleep(Random(25, 45, 1))
 		MouseUp("left")
+		Sleep(20) ; Thêm độ trễ chống trượt
 	EndIf
-EndFunc   ;==>_SingleClick
+EndFunc
 Func _CalculateOptimalClicks($fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
 	Local $iActiveCount = 0
@@ -2371,6 +2381,8 @@ Func _CheckProfitLossTargets()
 			If Not $g_bIsTrailingMode Then
 				$g_bIsTrailingMode = True
 				_UpdateStatus("🚀 ĐÃ KÍCH HOẠT GỒNG LÃI! Kéo đuôi " & _FormatMoneyVN($iTrailingMoney) & "đ dưới Đỉnh.")
+				; ---- ĐÃ THÊM DÒNG CẢNH BÁO NÀY CHO KHÁCH HÀNG HIỂU RÕ ----
+				_UpdateStatus("⚠️ Chú ý: Tool sẽ tiếp tục đánh cho đến khi tụt lãi. Nếu muốn dừng ngay, hãy tự bấm Dừng!")
 			EndIf
 		EndIf
 
@@ -2413,8 +2425,11 @@ Func _CheckProfitLossTargets()
 
 		If $iUserChoice == 1 Then
 			$g_bIsRunning = False
-			If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then WinClose($g_hTargetGameWin)
-			$g_hTargetGameWin = 0
+
+			; === ĐÃ XÓA LỆNH WINCLOSE Ở ĐÂY ĐỂ TRÁNH TOOL TỰ SÁT ===
+			$g_hTargetGameWin = 0 ; Chỉ reset biến, KHÔNG ĐÓNG CỬA SỔ
+			; =======================================================
+
 			WinSetTitle($g_hGUI, "", "STOP: " & $sReason)
 			GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
 			GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
@@ -3686,19 +3701,26 @@ Func _CheckBlacklist($sHistoryToCheck)
 EndFunc   ;==>_CheckBlacklist
 
 Func _UpdateStatus($sText)
-	; CHỐT CHẶN TỐI THƯỢNG: Ép buộc $g_hGUI phải thực sự tồn tại
 	If $g_hGUI <> "" And $g_hGUI <> 0 Then
 		Local $sTitleID = ($g_sMyTableID <> "") ? (" - " & $g_sMyTableID) : ""
 		WinSetTitle($g_hGUI, "", "Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & $sTitleID & " | " & $g_sCopyright)
 	EndIf
 
-	; >>> ĐƯA NỘI DUNG LÊN TV SCREEN <<<
+	; >>> ĐƯA NỘI DUNG LÊN TV SCREEN VÀ CHỐNG ĐƠ <<<
 	If $g_hEdit_ActivityLog <> 0 Then
 		Local $sTime = StringFormat("%02d:%02d:%02d", @HOUR, @MIN, @SEC)
-		GUICtrlSetData($g_hEdit_ActivityLog, "[" & $sTime & "] " & $sText & @CRLF, 1) ; Số 1 ở cuối nghĩa là Append nối đuôi
+		Local $sCurrentText = GUICtrlRead($g_hEdit_ActivityLog)
+
+		; Nếu vượt quá 15,000 ký tự (khoảng 200 dòng), tự động xóa nửa phần trên (cũ nhất)
+		If StringLen($sCurrentText) > 15000 Then
+			$sCurrentText = StringRight($sCurrentText, 8000) ; Giữ lại 8000 ký tự đuôi mới nhất
+			GUICtrlSetData($g_hEdit_ActivityLog, $sCurrentText & @CRLF & "[" & $sTime & "] " & $sText & @CRLF)
+		Else
+			; Nếu chưa đầy thì dùng lệnh nối đuôi tốc độ cao
+			GUICtrlSetData($g_hEdit_ActivityLog, "[" & $sTime & "] " & $sText & @CRLF, 1)
+		EndIf
 	EndIf
 
-	; Ghi file trạng thái cho Tool Tổng (Manager)
 	If $g_sMyTableID <> "" Then
 		Local $sStatusFile = @TempDir & "\status_" & $g_sMyTableID & ".ini"
 		If Not FileExists($sStatusFile) Then
@@ -3707,7 +3729,7 @@ Func _UpdateStatus($sText)
 		EndIf
 		IniWrite($sStatusFile, "Status", "CurrentAction", $sText)
 	EndIf
-EndFunc   ;==>_UpdateStatus
+EndFunc
 Func _CheckForUpdates()
 	; Chốt chặn an toàn: Không chạy update khi đang mở file code (.au3) để lập trình
 	If @Compiled = 0 Then Return
@@ -4564,16 +4586,31 @@ Func _FormatMoneyVN($sInput)
 	Return $sInput & $sFormatted
 EndFunc   ;==>_FormatMoneyVN
 Func _SyncVolumeToServer()
-	; Chỉ gửi khi có Volume mới
+	; Chỉ gửi khi có Volume chưa đồng bộ
 	If $g_fUnsyncedVolume > 0 Then
 		Local $fVolToSend = $g_fUnsyncedVolume
-		$g_fUnsyncedVolume = 0 ; Reset để tránh gửi trùng
+		$g_fUnsyncedVolume = 0 ; Reset ngay để không gửi trùng
 
+		; Tạo đường link kèm Volume để báo cho Server
 		Local $sUrl = $g_sAppsScriptBaseURL & "?action=add_volume&hwid=" & $g_sHWID & "&vol=" & $fVolToSend & "&nocache=" & TimerInit()
 
-		; Dùng InetGet với cờ 1,1 để BẮN NGẦM 100%.
-		; Tool quăng cục dữ liệu lên mạng xong là đi làm việc khác ngay lập tức, không thèm đứng lại chờ Google trả lời!
-		InetGet($sUrl, @TempDir & "\vol_sync.tmp", 1, 1)
+		; Bắn dữ liệu lên Google và đợi câu trả lời
+		Local $sResponse = BinaryToString(InetRead($sUrl, 3), 4)
+
+		; Nếu máy chủ phản hồi nợ vượt mốc -> Báo động khóa tool
+		If StringInStr($sResponse, '"status":"DEBT"') Then
+			$g_bIsRunning = False
+			_UpdateStatus("🛑 BÁO ĐỘNG: Phí duy trì vượt mốc an toàn. Tool bị tạm khóa!")
+
+			$g_hTargetGameWin = 0
+			_SetControlsState(True)
+			GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
+			GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
+
+			Local $oJson = Json_Decode($sResponse)
+			Local $iDebtAmount = Number(Json_Get($oJson, "[debt_amount]"))
+			_ShowDebtDialog($iDebtAmount, $g_sHWID)
+		EndIf
 	EndIf
 EndFunc
 ; ====================================================================
