@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.8" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.9" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -765,12 +765,6 @@ Func _CreateGroup_InfoAndTargets()
 	GUICtrlCreateLabel("Cắt lỗ (đ):", $x, $y, 80, 20)
 	$g_hInput_StopLoss = GUICtrlCreateInput("200.000", $x + 85, $y - 2, 85, 22)
 	GUICtrlSetBkColor($g_hInput_StopLoss, 0xE0FFFF)
-
-	$y += 40
-	$g_hLabel_Time = GUICtrlCreateLabel("00:00:00", $x, $y, $w, 35, BitOR($SS_CENTER, $SS_SUNKEN))
-	GUICtrlSetFont($g_hLabel_Time, 14, 800)
-	GUICtrlSetBkColor($g_hLabel_Time, 0xF0F8FF)
-	GUICtrlSetColor($g_hLabel_Time, 0x00008B)
 EndFunc   ;==>_CreateGroup_InfoAndTargets
 Func _CreateGroup_UserConfig_Main()
 	_CreateStyledGroup("Điều Khiển & Tùy Chọn Nhanh", 850, 405, 410, 380)
@@ -1221,6 +1215,7 @@ Func _LoadSelectedProfile($sProfileName)
 	GUICtrlSetData($g_hInput_InitialBet, IniRead($sFileToRead, $sSection, "InitialBet", "100.000"))
 	GUICtrlSetData($g_hInput_TakeProfit, IniRead($sFileToRead, $sSection, "TakeProfit", "200.000"))
 	GUICtrlSetData($g_hInput_StopLoss, IniRead($sFileToRead, $sSection, "StopLoss", "500.000"))
+	GUICtrlSetData($g_hInput_TrailingStop, IniRead($sFileToRead, $sSection, "TrailingStop", "50.000"))
 
 	GUICtrlSetData($g_hInput_ClickDelay, IniRead($g_sIniPath, "Settings", "ClickDelay", "10"))
 	GUICtrlSetData($g_hInput_ClickDelay_Main, IniRead($g_sIniPath, "Settings", "ClickDelay", "10"))
@@ -1942,11 +1937,16 @@ Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 	; BÍ QUYẾT 1: CHỈ KÉO CỬA SỔ LÊN NẾU NÓ ĐANG THỰC SỰ NẰM DƯỚI TASKBAR
 	; =================================================================
 	If Not WinActive($hGameWin) Then
-		; Số 16 là mã trạng thái Minimized (Ẩn dưới Taskbar). Chống bệnh tự thu nhỏ!
-		If BitAND(WinGetState($hGameWin), 16) Then WinSetState($hGameWin, "", @SW_RESTORE)
-		WinActivate($hGameWin)
+		; =================================================================
+	; BÍ QUYẾT 1 (ĐÃ SỬA LẠI): CHỈ RESTORE NẾU BỊ THU NHỎ XUỐNG TASKBAR
+	; =================================================================
+	If BitAND(WinGetState($hGameWin), 16) Then
+		WinSetState($hGameWin, "", @SW_RESTORE)
 		Sleep(100)
 	EndIf
+	; Sếp lưu ý: Không dùng WinActivate ở đây nữa!
+	EndIf
+
 
 	Sleep($iBaseDelay * 2)
 
@@ -1984,14 +1984,9 @@ EndFunc   ;==>_ClickChipsForAmount
 
 
 Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
-	; === HÀNG RÀO THÉP: CHỐNG LỖI ẨN TOÀN BỘ CỬA SỔ ===
-	; 1. Bỏ qua nếu tọa độ = 0 (Chưa cài đặt phỉnh)
+	; 1. Chặn lỗi nếu tọa độ trượt ra ngoài màn hình
 	If $iX <= 0 Or $iY <= 0 Then Return False
-
-	; 2. Bỏ qua nếu tọa độ đụng vào nút Show Desktop (Góc dưới cùng bên phải) hoặc lọt ra ngoài màn hình
-	If $iX >= (@DesktopWidth - 20) And $iY >= (@DesktopHeight - 20) Then Return False
 	If $iX > @DesktopWidth Or $iY > @DesktopHeight Then Return False
-	; ==================================================
 
 	Local $iRandX = $iX
 	Local $iRandY = $iY
@@ -2001,30 +1996,29 @@ Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 		$iRandY = $iY + Random(-$iRadius, $iRadius, 1)
 	EndIf
 
-	If Not WinActive($hWnd) Then
-		If BitAND(WinGetState($hWnd), 16) Then WinSetState($hWnd, "", @SW_RESTORE)
-		WinActivate($hWnd)
-		Sleep(100)
-	EndIf
+	; 2. Đảm bảo cửa sổ không bị thu nhỏ xuống Taskbar
+	If BitAND(WinGetState($hWnd), 16) Then WinSetState($hWnd, "", @SW_RESTORE)
 
-	If $g_sClickMode = "Control" Then
-		Local $aOldMousePos = MouseGetPos()
+	; TUYỆT ĐỐI KHÔNG DÙNG WinActivate ĐỂ CHỐNG GIẬT MÀN HÌNH
 
-		BlockInput(1)
-		MouseMove($iRandX, $iRandY, 0)
-		MouseDown("left")
-		Sleep(Random(25, 45, 1))
-		MouseUp("left")
-		Sleep(20) ; Nghỉ nhịp 20ms chống dính chuột kéo thả
-		MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
-		BlockInput(0)
-	Else
-		MouseMove($iRandX, $iRandY, $g_iMouseSpeed)
-		MouseDown("left")
-		Sleep(Random(25, 45, 1))
-		MouseUp("left")
-		Sleep(20)
-	EndIf
+	; 3. CLICK BÓNG MA (GHOST CLICK)
+	Local $aOldMousePos = MouseGetPos() ; Chụp lại vị trí chuột thật của sếp
+
+	BlockInput(1) ; Khóa tay khách 1/10 giây để chống giằng co chuột với Tool
+
+	; Bay chuột tới tọa độ cược và Click (Speed 0 = Tức thì)
+	MouseMove($iRandX, $iRandY, 0)
+	MouseDown("left")
+	Sleep(Random(20, 30, 1)) ; Nhấp nhả ngẫu nhiên cho giống người thật
+	MouseUp("left")
+
+	; Trả chuột về ngay vị trí sếp đang làm việc dở
+	MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
+
+	BlockInput(0) ; Mở khóa chuột lại cho sếp dùng
+
+	Sleep(20)
+	Return True
 EndFunc   ;==>_SingleClick
 Func _CalculateOptimalClicks($fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
@@ -3092,6 +3086,7 @@ Func _MasterSave($sProfileName, $bSilent = True)
 	IniWrite($g_sIniPath, $sSection, "InitialBet", GUICtrlRead($g_hInput_InitialBet))
 	IniWrite($g_sIniPath, $sSection, "TakeProfit", GUICtrlRead($g_hInput_TakeProfit))
 	IniWrite($g_sIniPath, $sSection, "StopLoss", GUICtrlRead($g_hInput_StopLoss))
+	IniWrite($g_sIniPath, $sSection, "TrailingStop", GUICtrlRead($g_hInput_TrailingStop))
 	IniWrite($g_sIniPath, "Settings", "ClickDelay", GUICtrlRead($g_hInput_ClickDelay_Main))
 	IniWrite($g_sIniPath, "Settings", "MouseSpeed", GUICtrlRead($g_hInput_MouseSpeed))
 	IniWrite($g_sIniPath, "Settings", "ClickMode", (GUICtrlRead($g_hRadio_ClickMode_Control_Main) = $GUI_CHECKED) ? "Control" : "Mouse")
@@ -4271,14 +4266,8 @@ Func _DecideNextAction()
 	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
 	Return _Logic_Custom($iTotalHands, $aQLV[1], False)
 EndFunc   ;==>_DecideNextAction
-; ====================================================================
-; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (LƯỚI LỌC KÍCH THƯỚC CHỐNG CỬA SỔ MA)
-; ====================================================================
-; ====================================================================
-; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (BẮT TỌA ĐỘ VẬT LÝ ĐỂ CHỐNG CỬA SỔ MA)
-; ====================================================================
 Func _GetRealGameWindow($sClass)
-	; 1. LƯỚI LỌC TUYỆT ĐỐI: Dùng tọa độ nút Banker để túm cổ chính xác cửa sổ game
+	; 1. Bắt theo tọa độ Nút Banker (Ưu tiên 1)
 	Local $iBankerX = Number(GUICtrlRead($g_hInput_BankerX))
 	Local $iBankerY = Number(GUICtrlRead($g_hInput_BankerY))
 
@@ -4288,25 +4277,30 @@ Func _GetRealGameWindow($sClass)
 		DllStructSetData($tPoint, "Y", $iBankerY)
 		Local $hWndPoint = _WinAPI_WindowFromPoint($tPoint)
 		If $hWndPoint <> 0 Then
-			Local $hTopLevel = _WinAPI_GetAncestor($hWndPoint, 2) ; 2 = $GA_ROOT (Cửa sổ mẹ)
+			Local $hTopLevel = _WinAPI_GetAncestor($hWndPoint, 2) ; Lấy cửa sổ mẹ
 			If $hTopLevel <> 0 And BitAND(WinGetState($hTopLevel), 2) Then
 				Return $hTopLevel
 			EndIf
 		EndIf
 	EndIf
 
-	; 2. DỰ PHÒNG: Nếu chưa cài đặt nút Banker thì lọc theo Size
+	; 2. Bắt theo danh sách cửa sổ (Lọc kỹ hơn, chống nhầm qua tab khác)
 	Local $aList = WinList("[CLASS:" & $sClass & "]")
 	Local $hWndReal = 0
-	Local $iMaxWidth = 0
+
+	Local $iResultColor = Number(GUICtrlRead($g_hInput_BankerColor)) ; Lấy màu chuẩn Banker làm mốc
 
 	For $i = 1 To $aList[0][0]
 		If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), 2) Then
 			Local $aPos = WinGetPos($aList[$i][1])
+			; Cửa sổ phải đủ to (trên 300px) để là trình duyệt
 			If IsArray($aPos) And $aPos[2] > 300 And $aPos[3] > 300 Then
-				If $aPos[2] > $iMaxWidth Then
-					$iMaxWidth = $aPos[2]
-					$hWndReal = $aList[$i][1]
+				; Nếu chưa tìm được cửa sổ nào, cứ lấy tạm cửa sổ to nhất
+				If $hWndReal = 0 Then $hWndReal = $aList[$i][1]
+
+				; NHƯNG nếu trong cửa sổ này quét thấy mã màu của game, chốt luôn cửa sổ này!
+				If IsArray(PixelSearch($aPos[0], $aPos[1], $aPos[0] + $aPos[2], $aPos[1] + $aPos[3], $iResultColor, 10)) Then
+					Return $aList[$i][1]
 				EndIf
 			EndIf
 		EndIf
