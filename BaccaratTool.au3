@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.7" ; Phiên bản hiện tại
+Global Const $g_sVersion = "3.8" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -74,8 +74,14 @@ Global $g_sSim_Formula = ""
 Global $g_hCombo_DailyData = 0
 Global $g_hLabel_VaultTotalNum = 0
 Global $g_hInput_ProfileName
-
+Global $g_hCheckbox_LaiKepVIP
 Global $g_hSim_Combo_TestMode
+
+; === BIẾN QUẢN LÝ CỬA HÀNG VIP ===
+Global $g_hListView_VIP
+Global $g_hBtn_ActionVIP
+Global $g_sAppliedVIPCode = "NONE" ; Lưu mã VIP đang được khách sử dụng (Mặc định là NONE)
+Global $g_sAppliedVIPName = "Không dùng"
 ; =====================================================================
 ; KHAI BÁO BIẾN TOÀN CỤC CHO HỆ THỐNG
 ; (Để dưới cùng của phần #include)
@@ -200,9 +206,12 @@ Global $g_hBtn_BuyVIP
 Global $g_sActiveVIPs = "" ; Lưu danh sách các gói VIP đang được phép dùng
 
 ; BẢNG GIÁ ĐA PHƯƠNG PHÁP (Mã Gói | Tên Hiển Thị | Giá Tiền)
-Global $g_aVipPackages[2][3] = [ _
-	["NONE", "Không dùng (Đánh theo công thức trên)", 0], _
-	["HK5", "Ma Trận Hong Kong Mở Rộng (5 Cột)", 500000] _
+; === BẢNG GIÁ VIP (Mã | Tên | Giá | Đơn vị tính) ===
+; === BẢNG GIÁ VIP (Mã | Tên | Giá | Đơn vị tính) ===
+; === BẢNG GIÁ VIP (Chỉ hiển thị Phương pháp Cược) ===
+Global $g_aVipPackages[2][4] = [ _
+	["NONE", "CÔNG THỨC CUSTOM (Nhập tay)", 0, "Miễn Phí"], _
+	["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"] _
 ]
 Global $g_bIsDevMode = False ; Biến ẩn chỉ dành cho Developer
 
@@ -250,6 +259,7 @@ Func _Main()
 
 	_CreateGUI($g_sExpiryDate)
 	_MainLoop()
+	_UpdateVIPListUI()
 EndFunc   ;==>_Main
 Func _CreateGUI($sExpiryDate)
 	$g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, -1, -1, -1, $WS_EX_CLIENTEDGE)
@@ -311,7 +321,6 @@ Func _MainLoop()
 
 		Local $aMsg = GUIGetMsg(1)
 
-		; Tự nhảy số tiền
 		Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
 		For $i = 0 To 2
 			Local $sRawVal = GUICtrlRead($aInputs[$i])
@@ -326,23 +335,15 @@ Func _MainLoop()
 				GUIDelete($g_hAnalysisGUI)
 				$g_hAnalysisGUI = 0
 			ElseIf $aMsg[0] = $g_hSim_BtnRun Then
-			ElseIf $aMsg[0] = $g_hSim_BtnInspect Then
-				_RunAI_Inspector()
 			EndIf
 		EndIf
 
 		Switch $aMsg[0]
 			Case 0
 				ContinueLoop
-
-			; =====================================================
-			; THÊM ĐOẠN NÀY ĐỂ TỰ ĐỘNG LƯU KHI CHỌN KIỂU CLICK
-			; =====================================================
 			Case $g_hRadio_ClickMode_Control_Main, $g_hRadio_ClickMode_Mouse_Main
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
-			; =====================================================
-
 			Case $g_hCombo_VolumeFilter, $g_hDate_VolumeFilter
 				_RefreshVolumeDisplay()
 			Case $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter
@@ -352,14 +353,23 @@ Func _MainLoop()
 					_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
 					Exit
 				EndIf
-			; ============================================
-			; SỰ KIỆN MENU VIP VÀ NÚT MUA
-			; ============================================
-			Case $g_hCombo_VIPMethod
-				_UpdateVipButtonState()
-			Case $g_hBtn_BuyVIP
-				_HandleBuyVIP()
-			; ============================================
+			Case $g_hCheckbox_LaiKepVIP
+				; Khi user tự tay bấm vào ô Checkbox Lãi Kép
+				If GUICtrlRead($g_hCheckbox_LaiKepVIP) = $GUI_CHECKED Then
+					Local $bOwned = False
+					If $g_bIsDevMode Then $bOwned = True
+					If StringInStr("," & $g_sActiveVIPs & ",", ",LAIKEP,") Then $bOwned = True
+
+					If Not $bOwned Then
+						; Chặn không cho tick, đá văng cái tick đi
+						GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_UNCHECKED)
+						; Tự động bật bảng QR đòi tiền đúng 20.000đ/Ngày
+						_ShowVIPPaymentDialog("LAIKEP", "TÍNH NĂNG GỒNG LÃI KÉP", 20000, $g_sHWID)
+					EndIf
+				EndIf
+				; === XỬ LÝ NÚT BẤM CỬA HÀNG VIP ===
+			Case $g_hBtn_ActionVIP
+				_HandleVIPButtonPress()
 
 			Case $g_hButton_Start
 				If $g_bIsRunning Then
@@ -371,10 +381,6 @@ Func _MainLoop()
 						GUICtrlSetState($g_hButton_Start, $GUI_DISABLE)
 						GUICtrlSetData($g_hButton_Start, "CHỜ THAO TÁC...")
 						_WaitManualAction_Pro("1. Vui lòng TỰ MỞ trình duyệt" & @CRLF & "2. Đăng nhập và vào thẳng sảnh game." & @CRLF & "3. ĐỂ TRÌNH DUYỆT ĐANG HIỂN THỊ, rồi bấm TIẾP TỤC.")
-
-						; ========================================================
-						; ĐÃ SỬA Ở ĐÂY: Ép dùng lưới lọc cửa sổ thật thay vì hàm cũ
-						; ========================================================
 						$g_hTargetGameWin = _GetRealGameWindow($sClass)
 					EndIf
 
@@ -395,17 +401,11 @@ Func _MainLoop()
 			Case $g_hButton_Unlock
 				_HandleUnlock()
 			Case $g_hButton_Lock
-				; HỦY QUYỀN ADMIN TEST KHI BẤM KHÓA
 				$g_bIsDevMode = False
-				_UpdateVipButtonState() ; Ép nút VIP xám lại
-
+				_UpdateVIPListUI()
 				_ToggleConfigControlsState(False)
-
 			Case $g_hButton_ActivateNew
-				; BẤM VÀO ĐÂY NÓ MỚI MỞ BẢNG QUÉT MÃ QR 100K
 				_ShowActivationDialog_New($g_sHWID)
-
-				; Kiểm tra lại xem khách quét chưa
 				Local $aCheck = _CheckLicenseOnline($g_sHWID)
 				$g_sMachineStatus = $aCheck[0]
 				If $g_sMachineStatus == "OK" Then
@@ -418,25 +418,20 @@ Func _MainLoop()
 			Case $g_hCheckbox_ToggleScan
 				_ToggleScanHotkey()
 			Case $g_hCheckbox_ContinuousMode
-				; Tích Nối đuôi thì phải tắt Bám chuỗi và Du kích
 				If GUICtrlRead($g_hCheckbox_ContinuousMode) = $GUI_CHECKED Then
 					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED)
 					GUICtrlSetState($g_hCheckbox_DuKich, $GUI_UNCHECKED)
 				EndIf
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
-
 			Case $g_hCheckbox_ReverseLogic
-				; Tích Bám chuỗi thì phải tắt Nối đuôi và Du kích
 				If GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED Then
 					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED)
 					GUICtrlSetState($g_hCheckbox_DuKich, $GUI_UNCHECKED)
 				EndIf
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
-
 			Case $g_hCheckbox_DuKich
-				; Tích Du kích thì không nên dùng Nối Đuôi hay Bám chuỗi (vì phá vỡ nhịp nghỉ)
 				If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
 					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED)
 					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED)
@@ -560,59 +555,44 @@ Func _CreateGroup_Settings()
 EndFunc   ;==>_CreateGroup_Settings
 
 Func _CreateGroup_BettingMethod()
+	; Đã dọn dẹp sạch sẽ phần VIP ở đây để giao diện thoáng hơn
 	_CreateStyledGroup("Phương Pháp Cược & Tín Hiệu", 10, 165, 320, 420)
-	Local $y_start = 190, $x_label = 20, $y = $y_start
+	Local $x_label = 20, $y = 190
 
 	GUICtrlCreateLabel("Nhập công thức cược tự do:", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 700)
 	GUICtrlSetColor(-1, 0x0000FF)
 	$y += 25
 
-	$g_hInput_CustomRules = GUICtrlCreateEdit("", $x_label, $y, 280, 80, BitOR(0x00200000, 0x00000040, 0x00001000))
+	; Kéo dài ô nhập công thức ra vì đã có nhiều không gian hơn
+	$g_hInput_CustomRules = GUICtrlCreateEdit("", $x_label, $y, 280, 160, BitOR(0x00200000, 0x00000040, 0x00001000))
 	GUICtrlSetFont(-1, 10)
 	GUICtrlSetBkColor(-1, 0xFFFACD)
-	$y += 90
+	$y += 180
 
-	; ====================================================
-	; KHU VỰC VIP CHUYÊN NGHIỆP ĐA MỆNH GIÁ
-	; ====================================================
-	GUICtrlCreateLabel("💎 CÁC PHƯƠNG PHÁP VIP ĐỘC QUYỀN:", $x_label, $y, 280, 20)
-	GUICtrlSetFont(-1, 9, 800)
-	GUICtrlSetColor(-1, 0xFF00FF)
-	$y += 20
-
-	$g_hCombo_VIPMethod = GUICtrlCreateCombo("", $x_label, $y, 280, 25, $CBS_DROPDOWNLIST)
-	Local $sListVIP = ""
-	For $i = 0 To UBound($g_aVipPackages) - 1
-		$sListVIP &= $g_aVipPackages[$i][1] & "|"
-	Next
-	GUICtrlSetData($g_hCombo_VIPMethod, StringTrimRight($sListVIP, 1), $g_aVipPackages[0][1])
-	GUICtrlSetFont(-1, 9, 700)
-	$y += 30
-
-	$g_hBtn_BuyVIP = GUICtrlCreateButton("CHỌN PHƯƠNG PHÁP VIP BÊN TRÊN", $x_label, $y, 280, 30)
-	GUICtrlSetBkColor(-1, 0xCCCCCC)
-	GUICtrlSetFont(-1, 9, 800)
-	GUICtrlSetState(-1, $GUI_DISABLE)
-	$y += 40
-	; ====================================================
 	$g_hCheckbox_SeparateQLV = GUICtrlCreateCheckbox("QLV Riêng Biệt (Từng dòng độc lập)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
-	$y += 25
+	$y += 35
 
 	$g_hCheckbox_ContinuousMode = GUICtrlCreateCheckbox("Đánh Nối Đuôi (Theo sát cầu)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
-	$y += 25
+	$y += 35
 
 	$g_hCheckbox_DuKich = GUICtrlCreateCheckbox("Du Kích (Thắng nghỉ 5p, Thua bỏ 10 tay)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 600)
 	GUICtrlSetColor(-1, 0x008000)
-	$y += 25
+	$y += 35
 
-	$g_hCheckbox_VirtualBet = GUICtrlCreateCheckbox("Đánh Nháp Tình Báo (Chờ gãy 3 lệnh mới đánh)", $x_label, $y, 300, 20)
+	$g_hCheckbox_VirtualBet = GUICtrlCreateCheckbox("Đánh Nháp Tình Báo (Chờ gãy 3 lệnh)", $x_label, $y, 300, 20)
 	GUICtrlSetFont(-1, 9, 700)
 	GUICtrlSetColor(-1, 0x8A2BE2)
-EndFunc
+	$y += 35 ; Tăng Y lên để tạo dòng mới
+
+	; === THÊM Ô TÍCH LÃI KÉP VÀO ĐÂY ===
+	$g_hCheckbox_LaiKepVIP = GUICtrlCreateCheckbox("💎 Gồng Lãi Kép (Kết hợp mọi công thức)", $x_label, $y, 300, 20)
+	GUICtrlSetFont(-1, 9, 800)
+	GUICtrlSetColor(-1, 0xFF00FF) ; Màu hồng VIP cho ngầu
+EndFunc   ;==>_CreateGroup_BettingMethod
 Func _CreateGroup_QLV_On_Main()
 	_CreateStyledGroup("Cấu Hình Quản Lý Vốn", 10, 590, 320, 240)
 
@@ -1161,7 +1141,7 @@ Func _HandleTestColorButton($sArea)
 
 	Sleep(1500)
 	ToolTip("")
-EndFunc
+EndFunc   ;==>_HandleTestColorButton
 
 ; --- CÁC HÀM QUẢN LÝ CẤU HÌNH SẢNH (HỆ THỐNG FILE INI) ---
 ; ==================================================================================================
@@ -1436,6 +1416,7 @@ Func _LoadSettings()
 	Local $iInitWins = Number(IniRead($sFileStats, $sInitMethod, "TotalWins", "0"))
 	Local $iInitLosses = Number(IniRead($sFileStats, $sInitMethod, "TotalLosses", "0"))
 	_FullBacktest()
+	_UpdateVIPListUI()
 EndFunc   ;==>_LoadSettings
 
 Func _StartProcess()
@@ -1892,7 +1873,7 @@ Func _AddNewHistoryEntry($sResult)
 
 	_UpdateBPTTotals($sResult)
 	_FullBacktest()
-EndFunc
+EndFunc   ;==>_AddNewHistoryEntry
 Func _UpdateBPTTotals($sResult)
 	Switch $sResult
 		Case "B"
@@ -1941,7 +1922,7 @@ Func _PerformBet($sBetOn, $fAmountToBet)
 	$g_fLastBetAmount = $fAmountToBet
 	$g_sLastBetOn = $sBetOn
 	Return True
-EndFunc
+EndFunc   ;==>_PerformBet
 Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 	Local $aClickQueue = _CalculateOptimalClicks($fAmount)
 	If @error Then Return False
@@ -2044,7 +2025,7 @@ Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 		MouseUp("left")
 		Sleep(20)
 	EndIf
-EndFunc
+EndFunc   ;==>_SingleClick
 Func _CalculateOptimalClicks($fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
 	Local $iActiveCount = 0
@@ -2115,7 +2096,7 @@ Func _ScanAreaForResult()
 	If IsArray(PixelSearch($g_aResultArea[0], $g_aResultArea[1], $g_aResultArea[2], $g_aResultArea[3], $iColT, $iTolerance)) Then Return "T"
 
 	Return ""
-EndFunc
+EndFunc   ;==>_ScanAreaForResult
 Func _GetAndValidateInputs()
 	$g_sGameWindowClass = GUICtrlRead($g_hInput_WindowClass)
 
@@ -2182,7 +2163,7 @@ EndFunc   ;==>_GetAndValidateInputs
 Func _UpdateStrategyStats($iBetResult)
 	; Đã xóa Ra-đa nên không cần cập nhật số liệu nữa
 	Return
-EndFunc
+EndFunc   ;==>_UpdateStrategyStats
 Func _Core_SaveStat($sFile, $sSection, $iResult)
 	; 1. Đọc dữ liệu cơ bản
 	Local $iWins = Number(IniRead($sFile, $sSection, "Wins", "0"))
@@ -2324,7 +2305,7 @@ Func _CheckProfitLossTargets()
 		EndIf
 	EndIf
 	Return False
-EndFunc
+EndFunc   ;==>_CheckProfitLossTargets
 Func _RedrawHistory()
 	; Xóa sạch bảng cũ
 	For $hLabel In $g_aLabel_History
@@ -2572,7 +2553,7 @@ Func WM_COMMAND_Handler($hWnd, $iMsg, $wParam, $lParam)
 		EndSwitch
 	EndIf
 	Return $GUI_RUNDEFMSG
-EndFunc
+EndFunc   ;==>WM_COMMAND_Handler
 Func _ParseCustomQLVTable()
 	ReDim $g_aCustomQLVTable[0][4]
 	Local $sAllRules = GUICtrlRead($g_hInput_CustomQLV_Edit)
@@ -2665,7 +2646,7 @@ Func _CheckLicenseOnline($sHWID)
 
 	Local $aResult[3] = [$sStatus, $sExpiry, 0]
 	Return $aResult
-EndFunc
+EndFunc   ;==>_CheckLicenseOnline
 Func _ShowUpdateDialog($sNewVersion)
 	Local $sMsg = "Đã có phiên bản mới!" & @CRLF & @CRLF & _
 			"Phiên bản hiện tại của bạn: " & $g_sVersion & @CRLF & _
@@ -2764,7 +2745,7 @@ Func _ShowActivationDialog_New($sHWID)
 		EndIf
 	WEnd
 	GUIDelete($hPayGUI)
-EndFunc
+EndFunc   ;==>_ShowActivationDialog_New
 
 ; =====================================================================
 ; BẢNG 2: GIAO DIỆN ỦNG HỘ CHI PHÍ DUY TRÌ (0.5% VOLUME)
@@ -2871,7 +2852,7 @@ Func _ShowDebtDialog($iDebtAmount, $sHWID)
 			$hTimer = TimerInit()
 		EndIf
 	WEnd
-EndFunc
+EndFunc   ;==>_ShowDebtDialog
 ; CÁC HÀM QUẢN LÝ MẪU QLV (ĐÃ NÂNG CẤP: THÊM/SỬA/XÓA TOÀN BỘ)
 ; ==============================================================================
 
@@ -3065,7 +3046,7 @@ Func _WaitForBettingTime_Safe()
 
 	ToolTip("")
 	Return True
-EndFunc
+EndFunc   ;==>_WaitForBettingTime_Safe
 Func _SaveSettings()
 	; Xác định đường dẫn file config
 	Local $sFile = $g_sIniPath
@@ -3298,7 +3279,7 @@ EndFunc   ;==>_Logic_Custom
 Func _FullBacktest()
 	; Đã xóa tính năng Phân tích nên chặn luôn hàm này để Tool chạy siêu nhẹ
 	Return
-EndFunc
+EndFunc   ;==>_FullBacktest
 Func _UpdateStatsUI()
 	_GUICtrlListView_BeginUpdate($g_hListView_Stats)
 	_GUICtrlListView_DeleteAllItems($g_hListView_Stats)
@@ -3410,7 +3391,7 @@ Func _UpdateStatus($sText)
 		EndIf
 		IniWrite($sStatusFile, "Status", "CurrentAction", $sText)
 	EndIf
-EndFunc
+EndFunc   ;==>_UpdateStatus
 Func _CheckForUpdates()
 	; Chốt chặn an toàn: Không chạy update khi đang mở file code (.au3) để lập trình
 	If @Compiled = 0 Then Return
@@ -3635,19 +3616,31 @@ Func _Vault_GetFilteredHistory()
 	Return ""
 EndFunc   ;==>_Vault_GetFilteredHistory
 Func _CreateGroup_StrategyStats()
-	Local $hGroup = GUICtrlCreateGroup("📝 BẢNG GHI NHÁP THỰC CHIẾN", 340, 40, 500, 250, $WS_GROUP, $WS_EX_CLIENTEDGE)
-	GUICtrlSetFont($hGroup, 10, 700)
-	GUICtrlSetColor($hGroup, 0x0000FF)
+	Local $hGroup = GUICtrlCreateGroup("💎 TRUNG TÂM PHƯƠNG PHÁP ĐỘC QUYỀN (VIP STORE)", 340, 40, 500, 250, $WS_GROUP, $WS_EX_CLIENTEDGE)
+	GUICtrlSetFont($hGroup, 11, 800)
+	GUICtrlSetColor($hGroup, 0xFF00FF)
 	GUICtrlSetBkColor($hGroup, 0xF5F5F5)
 
-	; Tạo cái bảng ghi nháp màu giấy vàng, font chữ Monospace để căn lề chuẩn 100%
-	$g_hEdit_Checksheet = GUICtrlCreateEdit("", 350, 65, 480, 215, BitOR(0x00200000, 0x0040, 0x0800))
-	GUICtrlSetBkColor($g_hEdit_Checksheet, 0xFFFACD)
-	GUICtrlSetColor($g_hEdit_Checksheet, 0x000000)
-	GUICtrlSetFont($g_hEdit_Checksheet, 11, 600, "Consolas")
+	; Bật Gridlines và FullRowSelect để Listview nhìn xịn như Excel
+	$g_hListView_VIP = GUICtrlCreateListView("Mã|Tên Phương Pháp (AI)|Giá Thuê|Trạng Thái", 350, 65, 480, 160, BitOR($LVS_REPORT, $LVS_SINGLESEL, $LVS_SHOWSELALWAYS), BitOR($WS_EX_CLIENTEDGE, $LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES))
+
+	; Tone màu Dark Mode hầm hố
+	GUICtrlSetBkColor($g_hListView_VIP, 0x1E1E1E) ; Nền xám đen
+	GUICtrlSetColor($g_hListView_VIP, 0xFFFFFF)   ; Chữ trắng
+	GUICtrlSetFont($g_hListView_VIP, 10, 600, "Segoe UI")
+
+	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 0, 60)
+	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 1, 210)
+	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 2, 100)
+	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 3, 105)
+
+	$g_hBtn_ActionVIP = GUICtrlCreateButton("⚡ ÁP DỤNG PHƯƠNG PHÁP ĐANG CHỌN ⚡", 350, 235, 480, 45)
+	GUICtrlSetFont($g_hBtn_ActionVIP, 12, 800)
+	GUICtrlSetBkColor($g_hBtn_ActionVIP, 0xFFD700) ; Vàng rực
+	GUICtrlSetColor($g_hBtn_ActionVIP, 0x000000)
 
 	GUICtrlCreateGroup("", -99, -99, 1, 1)
-EndFunc
+EndFunc   ;==>_CreateGroup_StrategyStats
 Func _GetGamingDate()
 	; Chốt sổ 7h sáng: Trả về chuỗi ngày YYYY/MM/DD
 	Local $iHour = @HOUR
@@ -3843,9 +3836,9 @@ Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 	_RefreshVolumeDisplay()
 	_RefreshProfitDisplay()
 
-    ; ============================================
-    ; BẮN VOLUME TỨC THÌ LÊN GOOGLE SHEET Ở ĐÂY
-    ; ============================================
+	; ============================================
+	; BẮN VOLUME TỨC THÌ LÊN GOOGLE SHEET Ở ĐÂY
+	; ============================================
 	_SyncVolumeToServer()
 EndFunc   ;==>_UpdateDailyStats
 ; --- HÚT TOÀN BỘ CẤU HÌNH QLV VÀO TRẠM MÔ PHỎNG ---
@@ -4018,7 +4011,7 @@ Func _SyncVolumeToServer()
 			_ShowDebtDialog($iDebtAmount, $g_sHWID)
 		EndIf
 	EndIf
-EndFunc
+EndFunc   ;==>_SyncVolumeToServer
 ; ====================================================================
 ; ĐỘNG CƠ MA TRẬN HONG KONG 5 CỘT (ĐÃ NÂNG CẤP CHẾ ĐỘ TEST NGẦM)
 ; ====================================================================
@@ -4091,7 +4084,7 @@ Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
 
 	If Not $bSilent Then _UpdateStatus("💎 VIP HK5 [Hàng " & $iRow & " Cột " & $iCol & "]: Theo Trend [" & $sPrevTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
 	Return $aResult
-EndFunc
+EndFunc   ;==>_Logic_VIP_HK5
 Func _UpdateVipButtonState()
 	Local $sSelected = GUICtrlRead($g_hCombo_VIPMethod)
 	Local $bIsVIPSelected = ($sSelected <> $g_aVipPackages[0][1])
@@ -4154,7 +4147,7 @@ Func _UpdateVipButtonState()
 		GUICtrlSetBkColor($g_hBtn_BuyVIP, 0xFFD700)
 		GUICtrlSetState($g_hBtn_BuyVIP, $GUI_ENABLE)
 	EndIf
-EndFunc
+EndFunc   ;==>_UpdateVipButtonState
 Func _HandleBuyVIP()
 	Local $sSelected = GUICtrlRead($g_hCombo_VIPMethod)
 	Local $sCode = "", $iPrice = 0
@@ -4168,7 +4161,7 @@ Func _HandleBuyVIP()
 	If $sCode = "" Then Return
 
 	_ShowVIPPaymentDialog($sCode, $sSelected, $iPrice, $g_sHWID)
-EndFunc
+EndFunc   ;==>_HandleBuyVIP
 
 ; =====================================================================
 ; BẢNG THANH TOÁN QR DÀNH RIÊNG CHO MUA GÓI VIP ĐA MỆNH GIÁ
@@ -4190,7 +4183,7 @@ Func _ShowVIPPaymentDialog($sCode, $sName, $iPrice, $sHWID)
 	Local $oIE = ObjCreate("Shell.Explorer.2")
 	Local $hActiveX = GUICtrlCreateObj($oIE, 85, 60, 280, 280)
 
-	GUICtrlCreateLabel("Mức phí: " & _FormatNumber($iPrice) & " VNĐ / Tháng", 10, 365, 430, 25, $SS_CENTER)
+	GUICtrlCreateLabel("Mức phí: " & _FormatNumber($iPrice) & " VNĐ / Ngày", 10, 365, 430, 25, $SS_CENTER)
 	GUICtrlSetFont(-1, 16, 800)
 	GUICtrlSetColor(-1, 0x00FF00)
 
@@ -4237,7 +4230,7 @@ Func _ShowVIPPaymentDialog($sCode, $sName, $iPrice, $sHWID)
 		EndIf
 	WEnd
 	GUIDelete($hPayGUI)
-EndFunc
+EndFunc   ;==>_ShowVIPPaymentDialog
 
 ; ====================================================================
 ; KIỂM TRA BẢO MẬT TRƯỚC KHI CHẠY TOOL
@@ -4247,23 +4240,24 @@ Func _DecideNextAction()
 	If _CheckProfitLossTargets() Then Return $aStop
 
 	Local $iTotalHands = UBound($g_aDisplayHistory)
-	Local $sSelectedVIP = GUICtrlRead($g_hCombo_VIPMethod)
-	Local $bHasVipCode = StringInStr("," & $g_sActiveVIPs & ",", ",HK5,")
+
+	; === KIỂM TRA QUYỀN VIP ===
+	Local $bHasVipCode = False
+	If StringInStr("," & $g_sActiveVIPs & ",", "," & $g_sAppliedVIPCode & ",") Then $bHasVipCode = True
 
 	; ===============================================================
-	; LUỒNG DÀNH CHO VIP (Vô hiệu hóa Du Kích, Nháp, Bám Chuỗi v.v.)
+	; LUỒNG DÀNH CHO VIP (Đánh bằng HK5)
 	; ===============================================================
-	If $sSelectedVIP == $g_aVipPackages[1][1] And ($bHasVipCode Or $g_bIsDevMode) Then
+	If $g_sAppliedVIPCode == "HK5" And ($bHasVipCode Or $g_bIsDevMode) Then
 		Local $sHistoryRaw = ""
 		For $i = 0 To $iTotalHands - 1
 			$sHistoryRaw &= $g_aDisplayHistory[$i]
 		Next
-		; Chỉ nạp vào HK5, và trong HK5 sẽ xài hàm _GetQLV_Params() để quản lý vốn
 		Return _Logic_VIP_HK5($sHistoryRaw)
 	EndIf
 
 	; ===============================================================
-	; LUỒNG DÀNH CHO BẢN THƯỜNG (Có Du Kích, Đánh Nháp v.v)
+	; LUỒNG DÀNH CHO BẢN THƯỜNG (Có Du Kích, Nối Đuôi, Custom...)
 	; ===============================================================
 	If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
 		If $g_iWaitTimeEnd_DuKich <> 0 Then
@@ -4276,7 +4270,7 @@ Func _DecideNextAction()
 
 	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
 	Return _Logic_Custom($iTotalHands, $aQLV[1], False)
-EndFunc
+EndFunc   ;==>_DecideNextAction
 ; ====================================================================
 ; HÀM TÌM CHÍNH XÁC CỬA SỔ GAME (LƯỚI LỌC KÍCH THƯỚC CHỐNG CỬA SỔ MA)
 ; ====================================================================
@@ -4320,7 +4314,7 @@ Func _GetRealGameWindow($sClass)
 
 	If $hWndReal <> 0 Then Return $hWndReal
 	Return WinGetHandle("[CLASS:" & $sClass & "]")
-EndFunc
+EndFunc   ;==>_GetRealGameWindow
 Func _UpdateChecksheet()
 	If $g_hEdit_Checksheet = 0 Then Return
 
@@ -4394,4 +4388,97 @@ Func _UpdateChecksheet()
 
 	GUICtrlSetData($g_hEdit_Checksheet, $sOutput)
 	GUICtrlSendMsg($g_hEdit_Checksheet, $EM_LINESCROLL, 0, 9999)
-EndFunc
+EndFunc   ;==>_UpdateChecksheet
+Func _UpdateVIPListUI()
+	If $g_hListView_VIP = 0 Then Return
+	_GUICtrlListView_DeleteAllItems($g_hListView_VIP)
+
+	For $i = 0 To UBound($g_aVipPackages) - 1
+		Local $sCode = $g_aVipPackages[$i][0]
+		Local $sName = $g_aVipPackages[$i][1]
+		Local $iPrice = $g_aVipPackages[$i][2]
+		Local $sUnit = $g_aVipPackages[$i][3]
+
+		Local $sStatus = "🔒 KHÓA"
+		If $sCode == "NONE" Then
+			$sStatus = "🟢 MIỄN PHÍ"
+		ElseIf $g_bIsDevMode Then
+			$sStatus = "🔓 DEV MỞ"
+		ElseIf StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then
+			$sStatus = "🔓 ĐÃ THUÊ"
+		EndIf
+
+		Local $bIsApplied = ($g_sAppliedVIPCode == $sCode)
+		If $bIsApplied Then $sStatus = "✅ ĐANG CHẠY"
+
+		; Gắn thẳng chữ "Ngày/Giờ/Tháng" vào cột Giá Tiền
+		Local $sPriceTxt = ($iPrice == 0) ? "0 đ" : _FormatNumber($iPrice) & "đ /" & $sUnit
+
+		; Tạo dòng trong Listview
+		Local $sItemText = $sCode & "|" & $sName & "|" & $sPriceTxt & "|" & $sStatus
+		Local $hItem = GUICtrlCreateListViewItem($sItemText, $g_hListView_VIP)
+
+		; TÔ MÀU ĐẲNG CẤP
+		If $bIsApplied Then
+			GUICtrlSetBkColor($hItem, 0x004400) ; Nền Xanh Lá Cây Đậm (Đang chọn)
+			GUICtrlSetColor($hItem, 0x00FF00)   ; Chữ Neon Xanh
+			GUICtrlSetFont($hItem, 10, 800)
+		ElseIf $sCode == "NONE" Then
+			GUICtrlSetBkColor($hItem, 0x2D2D30) ; Nền xám
+			GUICtrlSetColor($hItem, 0xFFFFFF)
+		ElseIf $sStatus == "🔒 KHÓA" Then
+			GUICtrlSetBkColor($hItem, 0x330000) ; Nền Đỏ Sẫm (Cấm)
+			GUICtrlSetColor($hItem, 0xFF6666)   ; Chữ đỏ nhạt
+		Else ; Đã mua hoặc Dev
+			GUICtrlSetBkColor($hItem, 0x2D2D30)
+			GUICtrlSetColor($hItem, 0xFFD700)   ; Chữ Vàng Gold
+			GUICtrlSetFont($hItem, 10, 700)
+		EndIf
+	Next
+EndFunc   ;==>_UpdateVIPListUI
+Func _HandleVIPButtonPress()
+	Local $iSel = _GUICtrlListView_GetSelectedIndices($g_hListView_VIP)
+	If $iSel == "" Then
+		MsgBox(48, "Thông báo", "Sếp vui lòng click chọn một dòng trong bảng VIP ở trên!")
+		Return
+	EndIf
+
+	Local $sCode = _GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 0)
+	Local $sName = _GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 1)
+	Local $sRawPrice = StringRegExpReplace(_GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 2), "\D", "")
+	Local $iPrice = Number($sRawPrice)
+
+	; 1. Kiểm tra bản quyền
+	Local $bOwned = False
+	If $g_bIsDevMode Then $bOwned = True
+	If StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then $bOwned = True
+
+	If Not $bOwned Then
+		_ShowVIPPaymentDialog($sCode, $sName, $iPrice, $g_sHWID)
+		Return
+	EndIf
+
+	; 2. NẾU MÃ LÀ "LAIKEP" -> NÓ LÀ TÍNH NĂNG BỔ TRỢ, KHÔNG PHẢI PHƯƠNG PHÁP ĐÁNH
+	If $sCode == "LAIKEP" Then
+		Local $iState = GUICtrlRead($g_hCheckbox_LaiKepVIP)
+		If $iState == $GUI_CHECKED Then
+			GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_UNCHECKED)
+			_UpdateStatus("⏸️ Đã TẮT tính năng Gồng Lãi Kép.")
+		Else
+			GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_CHECKED)
+			_UpdateStatus("🚀 Đã BẬT tính năng Gồng Lãi Kép! (Sẽ chạy ngầm cùng công thức bạn chọn)")
+		EndIf
+		Return ; Thoát ngang ở đây, không đổi màu bảng Listview
+	EndIf
+
+	; 3. NẾU LÀ PHƯƠNG PHÁP CƯỢC THÌ ÁP DỤNG BÌNH THƯỜNG
+	$g_sAppliedVIPCode = $sCode
+	$g_sAppliedVIPName = $sName
+	If $sCode == "NONE" Then
+		_UpdateStatus("✅ Đã chuyển về: " & $sName)
+	Else
+		_UpdateStatus("🚀 Đã kích hoạt Phương pháp: " & $sName)
+	EndIf
+
+	_UpdateVIPListUI()
+EndFunc   ;==>_HandleVIPButtonPress
