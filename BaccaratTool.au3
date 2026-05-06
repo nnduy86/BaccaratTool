@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "3.9" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.0" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -76,7 +76,7 @@ Global $g_hLabel_VaultTotalNum = 0
 Global $g_hInput_ProfileName
 Global $g_hCheckbox_LaiKepVIP
 Global $g_hSim_Combo_TestMode
-
+Global $g_sLastCheckedVIPList = ""
 ; === BIẾN QUẢN LÝ CỬA HÀNG VIP ===
 Global $g_hListView_VIP
 Global $g_hBtn_ActionVIP
@@ -210,9 +210,9 @@ Global $g_sActiveVIPs = "" ; Lưu danh sách các gói VIP đang được phép 
 ; === BẢNG GIÁ VIP (Mã | Tên | Giá | Đơn vị tính) ===
 ; === BẢNG GIÁ VIP (Chỉ hiển thị Phương pháp Cược) ===
 Global $g_aVipPackages[2][4] = [ _
-	["NONE", "CÔNG THỨC CUSTOM (Nhập tay)", 0, "Miễn Phí"], _
-	["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"] _
-]
+		["NONE", "CÔNG THỨC CUSTOM (Nhập tay)", 0, "Miễn Phí"], _
+		["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"] _
+		]
 Global $g_bIsDevMode = False ; Biến ẩn chỉ dành cho Developer
 
 Global $g_sMachineStatus = "" ; Theo dõi trạng thái máy (Mới/Đã Kích Hoạt)
@@ -258,6 +258,7 @@ Func _Main()
 	EndIf
 
 	_CreateGUI($g_sExpiryDate)
+	AdlibRegister("_CheckVIPStateChanges", 200) ; <--- Chèn dòng này vào đây
 	_MainLoop()
 	_UpdateVIPListUI()
 EndFunc   ;==>_Main
@@ -367,10 +368,8 @@ Func _MainLoop()
 						_ShowVIPPaymentDialog("LAIKEP", "TÍNH NĂNG GỒNG LÃI KÉP", 20000, $g_sHWID)
 					EndIf
 				EndIf
-				; === XỬ LÝ NÚT BẤM CỬA HÀNG VIP ===
-			Case $g_hBtn_ActionVIP
-				_HandleVIPButtonPress()
-
+			Case $g_hListView_VIP
+				_ProcessVIPListCheckboxes()
 			Case $g_hButton_Start
 				If $g_bIsRunning Then
 					_StopProcess()
@@ -1609,23 +1608,7 @@ Func _HaltProcess($sReason)
 	EndIf
 EndFunc   ;==>_HaltProcess
 Func _ResetAllStatsAndState()
-	;$g_fTotalProfit = 0.0
-
-	; --- [LOGIC 7H SÁNG GIỮ NGUYÊN] ---
-	Local $sFileStats = @ScriptDir & "\stats_history.ini"
-	Local $sGamingDate = @YEAR & "/" & @MON & "/" & @MDAY
-	If Number(@HOUR) < 7 Then
-		$sGamingDate = _DateAdd('d', -1, $sGamingDate)
-	EndIf
-	$sGamingDate = StringReplace($sGamingDate, "/", "")
-	Local $sSavedDate = IniRead($sFileStats, "Global_Daily", "Date", "")
-	If $sSavedDate = $sGamingDate Then
-		$g_fTotalVolume = Number(IniRead($sFileStats, "Global_Daily", "Volume", "0"))
-	Else
-		$g_fTotalVolume = 0
-		IniWrite($sFileStats, "Global_Daily", "Date", $sGamingDate)
-		IniWrite($sFileStats, "Global_Daily", "Volume", "0")
-	EndIf
+	; Reset các thông số cơ bản
 	ReDim $g_aDisplayHistory[0]
 	$g_iHistoryCutoffIndex = 0
 	$g_iTotalBanker = 0
@@ -1634,24 +1617,22 @@ Func _ResetAllStatsAndState()
 	$g_sLastBetOn = ""
 	_ResetBettingMethodState()
 
-	; --- [THÊM MỚI] RESET MẢNG VỐN RIÊNG BIỆT ---
-	; Reset toàn bộ các dòng QLV về 0
+	; Reset mảng vốn riêng biệt
 	For $i = 0 To UBound($g_aRuleLevels) - 1
 		$g_aRuleLevels[$i] = 0
 	Next
-	$g_iLastActiveRuleIndex = -1 ; Hủy khóa dòng
-	; -------------------------------------------------
+	$g_iLastActiveRuleIndex = -1
 
 	_UpdateStatus("♻️ Đã Reset Lịch sử, Memory & Vốn các dòng!")
 
+	; Cập nhật lại toàn bộ nhãn hiển thị
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
 	_UpdateTotalHandsLabel()
 	_UpdateBPTTotalsLabels()
-	_UpdateTotalVolumeLabel()
+	_RefreshVolumeDisplay() ; Đồng bộ nhãn Volume
 	_RedrawHistory()
 EndFunc   ;==>_ResetAllStatsAndState
-
 Func _ResetBettingMethodState()
 	$g_iCapitalLevel = 0 ; Bắt đầu từ Lệnh 0
 	_UpdateStatus("Đã Reset về Lệnh 0.")
@@ -1938,13 +1919,13 @@ Func _ClickChipsForAmount($hGameWin, $fAmount, $aBetAreaPos)
 	; =================================================================
 	If Not WinActive($hGameWin) Then
 		; =================================================================
-	; BÍ QUYẾT 1 (ĐÃ SỬA LẠI): CHỈ RESTORE NẾU BỊ THU NHỎ XUỐNG TASKBAR
-	; =================================================================
-	If BitAND(WinGetState($hGameWin), 16) Then
-		WinSetState($hGameWin, "", @SW_RESTORE)
-		Sleep(100)
-	EndIf
-	; Sếp lưu ý: Không dùng WinActivate ở đây nữa!
+		; BÍ QUYẾT 1 (ĐÃ SỬA LẠI): CHỈ RESTORE NẾU BỊ THU NHỎ XUỐNG TASKBAR
+		; =================================================================
+		If BitAND(WinGetState($hGameWin), 16) Then
+			WinSetState($hGameWin, "", @SW_RESTORE)
+			Sleep(100)
+		EndIf
+		; Sếp lưu ý: Không dùng WinActivate ở đây nữa!
 	EndIf
 
 
@@ -2469,9 +2450,8 @@ Func _UpdateTotalHandsLabel()
 EndFunc   ;==>_UpdateTotalHandsLabel
 
 Func _UpdateTotalVolumeLabel()
-	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($g_fTotalVolume) & " VND")
+	_RefreshVolumeDisplay()
 EndFunc   ;==>_UpdateTotalVolumeLabel
-
 Func _UpdateClock()
 	If Not IsHWnd($g_hGUI) Then
 		AdlibUnRegister("_UpdateClock")
@@ -2741,11 +2721,8 @@ Func _ShowActivationDialog_New($sHWID)
 	GUIDelete($hPayGUI)
 EndFunc   ;==>_ShowActivationDialog_New
 
-; =====================================================================
-; BẢNG 2: GIAO DIỆN ỦNG HỘ CHI PHÍ DUY TRÌ (0.5% VOLUME)
-; =====================================================================
 Func _ShowDebtDialog($iDebtAmount, $sHWID)
-	Local $hDebtGUI = GUICreate("PHÍ DUY TRÌ HỆ THỐNG", 420, 520, -1, -1, BitOR($WS_POPUP, $WS_BORDER), $WS_EX_TOPMOST)
+	Local $hDebtGUI = GUICreate("PHÍ DUY TRÌ HỆ THỐNG", 420, 530, -1, -1, BitOR($WS_POPUP, $WS_BORDER), $WS_EX_TOPMOST)
 	GUISetBkColor(0x111111, $hDebtGUI)
 
 	; Nút X canh lề trái một chút để thoát khỏi vùng chữ
@@ -2754,29 +2731,45 @@ Func _ShowDebtDialog($iDebtAmount, $sHWID)
 	GUICtrlSetColor($hBtnExit, 0xFFFFFF)
 	GUICtrlSetFont(-1, 12, 800)
 
-	; Thu hẹp vùng chữ (còn 350)
-	GUICtrlCreateLabel("PHÍ DUY TRÌ MÁY CHỦ AI", 10, 15, 350, 30, $SS_CENTER)
+	; Tiêu đề
+	GUICtrlCreateLabel("PHÍ DUY TRÌ HỆ THỐNG", 10, 15, 350, 30, $SS_CENTER)
 	GUICtrlSetFont(-1, 14, 800)
 	GUICtrlSetColor(-1, 0x00FF00)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
 	Local $sMessage = "Cảm ơn bạn đã đồng hành!" & @CRLF & _
-			"Để duy trì máy chủ tốc độ cao và nâng cấp AI liên tục," & @CRLF & _
-			"hệ thống xin thu 0.5% phí duy trì từ Volume ngày hôm qua." & @CRLF & _
-			"Chúc bạn hôm nay tiếp tục đại thắng rực rỡ! 🚀"
-	GUICtrlCreateLabel($sMessage, 10, 65, 400, 80, $SS_CENTER)
+			"Để duy trì máy chủ tốc độ cao và nâng cấp hệ thống liên tục," & @CRLF & _
+			"hệ thống xin thu 0.5% phí duy trì từ Tổng Volume chưa thanh toán." & @CRLF & _
+			"Thanh toán xong, Volume trên máy bạn sẽ tự động xóa về 0 đ. 🚀"
+	GUICtrlCreateLabel($sMessage, 10, 60, 400, 50, $SS_CENTER)
 	GUICtrlSetFont(-1, 11, 400)
 	GUICtrlSetColor(-1, 0x00FFFF)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	GUICtrlCreateLabel("CHI PHÍ DUY TRÌ HÔM QUA (0.5%):", 10, 150, 400, 25, $SS_CENTER)
-	GUICtrlSetFont(-1, 12, 700)
-	GUICtrlSetColor(-1, 0xCCCCCC)
+	; =================================================================
+	; TÍNH TOÁN NGƯỢC TỔNG VOLUME TỪ SỐ NỢ (ĐỒNG BỘ 100% TOÁN HỌC)
+	; =================================================================
+	Local $fVolumeDaDat = $iDebtAmount / 0.005
 
-	GUICtrlCreateLabel(_FormatNumber($iDebtAmount) & " VNĐ", 10, 175, 400, 40, $SS_CENTER)
+	GUICtrlCreateLabel("TỔNG VOLUME CƯỢC CỦA BẠN:", 10, 120, 400, 20, $SS_CENTER)
+	GUICtrlSetFont(-1, 11, 600)
+	GUICtrlSetColor(-1, 0xAAAAAA)
+
+	GUICtrlCreateLabel(_FormatNumber($fVolumeDaDat) & " đ", 10, 145, 400, 30, $SS_CENTER)
+	GUICtrlSetFont(-1, 18, 800)
+	GUICtrlSetColor(-1, 0xFFFFFF) ; Hiển thị chữ trắng to nổi bật
+
+	GUICtrlCreateLabel("CHI PHÍ DUY TRÌ (0.5% VOLUME):", 10, 185, 400, 20, $SS_CENTER)
+	GUICtrlSetFont(-1, 11, 600)
+	GUICtrlSetColor(-1, 0xAAAAAA)
+
+	GUICtrlCreateLabel(_FormatNumber($iDebtAmount) & " VNĐ", 10, 210, 400, 35, $SS_CENTER)
 	GUICtrlSetFont(-1, 24, 800)
-	GUICtrlSetColor(-1, 0xFFD700)
+	GUICtrlSetColor(-1, 0xFFD700) ; Tiền nợ hiển thị màu vàng Gold
 
+	; =================================================================
+
+	; QR Code
 	Local $sBankId = "MB"
 	Local $sAccountNo = "0986071012"
 	Local $sAccountName = "NGUYEN NGOC DUY"
@@ -2786,7 +2779,7 @@ Func _ShowDebtDialog($iDebtAmount, $sHWID)
 	Local $sQrUrl = "https://qr.sepay.vn/img?bank=" & $sBankId & "&acc=" & $sAccountNo & "&amount=" & $iDebtAmount & "&des=" & $sContentUrl & "&name=" & $sNameUrl
 
 	Local $oIE = ObjCreate("Shell.Explorer.2")
-	Local $hActiveX = GUICtrlCreateObj($oIE, 110, 230, 200, 200)
+	Local $hActiveX = GUICtrlCreateObj($oIE, 110, 255, 200, 200) ; Đẩy QR xích xuống một chút
 
 	$oIE.navigate("about:blank")
 	While $oIE.readyState <> 4
@@ -2799,11 +2792,11 @@ Func _ShowDebtDialog($iDebtAmount, $sHWID)
 	$oIE.document.close()
 
 	Local $sNote = "Nội dung CK: " & $sContent
-	GUICtrlCreateLabel($sNote, 10, 440, 400, 25, $SS_CENTER)
+	GUICtrlCreateLabel($sNote, 10, 465, 400, 25, $SS_CENTER)
 	GUICtrlSetFont(-1, 14, 800)
 	GUICtrlSetColor(-1, 0xFFD700)
 
-	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Hệ thống đang quét giao dịch... (7s)", 10, 475, 400, 25, BitOR($SS_CENTER, 0x0200))
+	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Hệ thống đang quét giao dịch... (7s)", 10, 495, 400, 25, BitOR($SS_CENTER, 0x0200))
 	GUICtrlSetFont(-1, 10, 600)
 	GUICtrlSetColor(-1, 0x00FF00)
 
@@ -2839,6 +2832,14 @@ Func _ShowDebtDialog($iDebtAmount, $sHWID)
 					GUICtrlSetData($hStatusLabel, "✅ THANH TOÁN THÀNH CÔNG!")
 					Sleep(1000)
 					MsgBox(64, "Tuyệt vời", "Đã nhận được phí duy trì! Chúc bạn đại thắng!", 0, $hDebtGUI)
+
+					; CẬP NHẬT TỨC THÌ (THỜI GIAN THỰC) LÊN GIAO DIỆN CHÍNH (Về 0đ)
+					Local $fServerVol = Number(Json_Get($oJson, "[vol_today]"))
+					IniWrite(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), $fServerVol)
+
+					$g_fTotalVolume = $fServerVol
+					If IsHWnd($g_hGUI) Then _RefreshVolumeDisplay()
+
 					GUIDelete($hDebtGUI)
 					Return True
 				EndIf
@@ -2940,19 +2941,14 @@ Func _EnsureDefaultQLVExists()
 EndFunc   ;==>_EnsureDefaultQLVExists
 
 Func _SaveSessionState()
-	; ĐÃ XÓA LỆNH LƯU LỊCH SỬ CẦU ĐỂ KHI MỞ LẠI TOOL SẼ TRẮNG TINH
 	IniWrite($g_sIniPath, "SessionData", "CapitalLevel", $g_iCapitalLevel)
 	IniWrite($g_sIniPath, "SessionData", "TotalProfit", $g_fTotalProfit)
 	IniWrite($g_sIniPath, "SessionData", "CycleStep", $g_iCycleStep)
-	IniWrite($g_sIniPath, "SessionData", "TotalVolume", $g_fTotalVolume)
 
-	Local $sSaveDate = @YEAR & "/" & @MON & "/" & @MDAY
-	If Number(@HOUR) < 7 Then $sSaveDate = _DateAdd('d', -1, $sSaveDate)
-	IniWrite($g_sIniPath, "SessionData", "VolumeDate", $sSaveDate)
+	; --- ĐÃ TẮT LỆNH LƯU VOLUME VÀO CONFIG.INI TRÁNH ĐỌC NHẦM ---
+	; Mọi dữ liệu Volume giờ do volume_history.ini và Server quản lý.
 EndFunc   ;==>_SaveSessionState
-
 Func _LoadSessionState()
-	; 1. ÉP RESET TRẮNG TOÀN BỘ LỊCH SỬ KHI MỞ TOOL
 	ReDim $g_aDisplayHistory[0]
 	$g_iHistoryCutoffIndex = 0
 	$g_iTotalBanker = 0
@@ -2962,24 +2958,17 @@ Func _LoadSessionState()
 	$g_iCapitalLevel = 0
 	$g_fTotalProfit = 0
 
-	; 2. [LOGIC VOLUME] CHỈ BẢO LƯU VOLUME TỔNG (CỘNG DỒN 24H)
-	Local $sCurrentGamingDate = @YEAR & "/" & @MON & "/" & @MDAY
-	If Number(@HOUR) < 7 Then $sCurrentGamingDate = _DateAdd('d', -1, $sCurrentGamingDate)
-
-	Local $sSavedDate = IniRead($g_sIniPath, "SessionData", "VolumeDate", "")
-	If $sSavedDate = $sCurrentGamingDate Then
-		$g_fTotalVolume = Number(IniRead($g_sIniPath, "SessionData", "TotalVolume", "0"))
-	Else
-		$g_fTotalVolume = 0
-	EndIf
+	; ĐỌC CHUẨN VOLUME TỪ FILE LỊCH SỬ ĐÃ ĐỒNG BỘ VỚI MÁY CHỦ
+	$g_fTotalVolume = Number(IniRead(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), "0"))
 
 	$g_iCycleStep = 1
-	; 3. VẼ LẠI GIAO DIỆN SẠCH SẼ NGAY LẬP TỨC
+
 	_RedrawHistory()
 	_UpdateBPTTotalsLabels()
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
-	_UpdateTotalVolumeLabel()
+
+	_RefreshVolumeDisplay()
 EndFunc   ;==>_LoadSessionState
 Func _GetCoords_Fast($hInputX, $hInputY)
 	If $g_iTempX = 0 And $g_iTempY = 0 Then
@@ -3515,9 +3504,9 @@ Func _ShowTargetPopup_Overlay($sStatus, $sReason)
 
 	; 6. Bắn Telegram NGAY LẬP TỨC
 	If $sStatus = "DONE_WIN" Then
-		_SendTelegram("🎉 Sếp ơi! AI Song Kiếm Hợp Bích đã húp đủ mục tiêu Chốt Lời. Đang đợi quyết định!")
+		_SendTelegram("🎉 Sếp ơi! Hệ thống đã đạt đủ mục tiêu Chốt Lời. Đang đợi quyết định!")
 	Else
-		_SendTelegram("⚠️ Sếp ơi! AI Song Kiếm Hợp Bích chạm mức Cắt Lỗ. Vào kiểm tra sảnh ngay!")
+		_SendTelegram("⚠️ Sếp ơi! Hệ thống đã chạm mức Cắt Lỗ. Vào kiểm tra sảnh ngay!")
 	EndIf
 
 	; 7. Vòng lặp chờ lệnh (CÓ BẢO VỆ 5 PHÚT)
@@ -3616,23 +3605,17 @@ Func _CreateGroup_StrategyStats()
 	GUICtrlSetColor($hGroup, 0xFF00FF)
 	GUICtrlSetBkColor($hGroup, 0xF5F5F5)
 
-	; Bật Gridlines và FullRowSelect để Listview nhìn xịn như Excel
-	$g_hListView_VIP = GUICtrlCreateListView("Mã|Tên Phương Pháp (AI)|Giá Thuê|Trạng Thái", 350, 65, 480, 160, BitOR($LVS_REPORT, $LVS_SINGLESEL, $LVS_SHOWSELALWAYS), BitOR($WS_EX_CLIENTEDGE, $LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES))
+	; Đã thêm mã 0x00000004 để tạo Checkbox và mở rộng chiều cao xuống 215
+	$g_hListView_VIP = GUICtrlCreateListView("Mã|Tên Phương Pháp|Giá Thuê|Trạng Thái", 350, 65, 480, 215, BitOR($LVS_REPORT, $LVS_SINGLESEL, $LVS_SHOWSELALWAYS), BitOR($WS_EX_CLIENTEDGE, $LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES, 0x00000004))
 
-	; Tone màu Dark Mode hầm hố
-	GUICtrlSetBkColor($g_hListView_VIP, 0x1E1E1E) ; Nền xám đen
-	GUICtrlSetColor($g_hListView_VIP, 0xFFFFFF)   ; Chữ trắng
+	GUICtrlSetBkColor($g_hListView_VIP, 0x1E1E1E)
+	GUICtrlSetColor($g_hListView_VIP, 0xFFFFFF)
 	GUICtrlSetFont($g_hListView_VIP, 10, 600, "Segoe UI")
 
 	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 0, 60)
 	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 1, 210)
 	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 2, 100)
 	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 3, 105)
-
-	$g_hBtn_ActionVIP = GUICtrlCreateButton("⚡ ÁP DỤNG PHƯƠNG PHÁP ĐANG CHỌN ⚡", 350, 235, 480, 45)
-	GUICtrlSetFont($g_hBtn_ActionVIP, 12, 800)
-	GUICtrlSetBkColor($g_hBtn_ActionVIP, 0xFFD700) ; Vàng rực
-	GUICtrlSetColor($g_hBtn_ActionVIP, 0x000000)
 
 	GUICtrlCreateGroup("", -99, -99, 1, 1)
 EndFunc   ;==>_CreateGroup_StrategyStats
@@ -3814,8 +3797,11 @@ Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 	Local $sGamingMonth = StringLeft($sGamingDate, 7)
 	Local $sGamingYear = StringLeft($sGamingDate, 4)
 
-	; 1. LƯU BẢNG VOLUME
-	IniWrite($sFileVolume, "Daily", $sGamingDate, Number(IniRead($sFileVolume, "Daily", $sGamingDate, "0")) + $fBetAmount)
+	; 1. LƯU BẢNG VOLUME VÀ CẬP NHẬT BIẾN NHỚ
+	Local $fNewDailyVol = Number(IniRead($sFileVolume, "Daily", $sGamingDate, "0")) + $fBetAmount
+	$g_fTotalVolume = $fNewDailyVol ; CHỐT CHẶN: Ép biến toàn cục đồng bộ với file
+
+	IniWrite($sFileVolume, "Daily", $sGamingDate, $fNewDailyVol)
 	IniWrite($sFileVolume, "Weekly", $sGamingWeek, Number(IniRead($sFileVolume, "Weekly", $sGamingWeek, "0")) + $fBetAmount)
 	IniWrite($sFileVolume, "Monthly", $sGamingMonth, Number(IniRead($sFileVolume, "Monthly", $sGamingMonth, "0")) + $fBetAmount)
 	IniWrite($sFileVolume, "Yearly", $sGamingYear, Number(IniRead($sFileVolume, "Yearly", $sGamingYear, "0")) + $fBetAmount)
@@ -3831,9 +3817,6 @@ Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 	_RefreshVolumeDisplay()
 	_RefreshProfitDisplay()
 
-	; ============================================
-	; BẮN VOLUME TỨC THÌ LÊN GOOGLE SHEET Ở ĐÂY
-	; ============================================
 	_SyncVolumeToServer()
 EndFunc   ;==>_UpdateDailyStats
 ; --- HÚT TOÀN BỘ CẤU HÌNH QLV VÀO TRẠM MÔ PHỎNG ---
@@ -4010,6 +3993,9 @@ EndFunc   ;==>_SyncVolumeToServer
 ; ====================================================================
 ; ĐỘNG CƠ MA TRẬN HONG KONG 5 CỘT (ĐÃ NÂNG CẤP CHẾ ĐỘ TEST NGẦM)
 ; ====================================================================
+; ====================================================================
+; ĐỘNG CƠ MA TRẬN HONG KONG 5 CỘT (ĐÃ MỞ KHÓA QLV TÙY CHỈNH)
+; ====================================================================
 Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
 	Local $aResult[3] = ["OBSERVE", "", 0]
 	Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Dọn sạch Hòa
@@ -4058,7 +4044,7 @@ Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
 
 	If $bAlreadyWon Then
 		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đã WIN 1 tay ở Hàng " & $iRow & " -> Chờ Hàng mới.")
-		$g_iCapitalLevel = 0
+		; ĐÃ XÓA LỆNH ÉP VỀ 0 Ở ĐÂY ĐỂ BẢO LƯU BẢNG QLV
 		Return $aResult
 	EndIf
 
@@ -4070,7 +4056,7 @@ Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
 	; Nếu V thì đánh Đồng, nếu X thì đánh Nghịch
 	Local $sBetChar = ($sPrevTrend == "V") ? $sSampleNext : (($sSampleNext == "B") ? "P" : "B")
 
-	$g_iCapitalLevel = $iCol - 2
+	; ĐÃ XÓA LỆNH ÉP VỐN THEO CỘT ($iCol - 2) Ở ĐÂY
 	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
 
 	$aResult[0] = "BET"
@@ -4387,92 +4373,123 @@ Func _UpdateVIPListUI()
 	If $g_hListView_VIP = 0 Then Return
 	_GUICtrlListView_DeleteAllItems($g_hListView_VIP)
 
-	For $i = 0 To UBound($g_aVipPackages) - 1
+	Local $iListIndex = 0
+
+	For $i = 1 To UBound($g_aVipPackages) - 1
 		Local $sCode = $g_aVipPackages[$i][0]
 		Local $sName = $g_aVipPackages[$i][1]
 		Local $iPrice = $g_aVipPackages[$i][2]
 		Local $sUnit = $g_aVipPackages[$i][3]
 
 		Local $sStatus = "🔒 KHÓA"
-		If $sCode == "NONE" Then
-			$sStatus = "🟢 MIỄN PHÍ"
-		ElseIf $g_bIsDevMode Then
-			$sStatus = "🔓 DEV MỞ"
-		ElseIf StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then
+		If $g_bIsDevMode Or StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then
 			$sStatus = "🔓 ĐÃ THUÊ"
 		EndIf
 
-		Local $bIsApplied = ($g_sAppliedVIPCode == $sCode)
+		Local $bIsApplied = False
+		If $g_sAppliedVIPCode == $sCode Then $bIsApplied = True
 		If $bIsApplied Then $sStatus = "✅ ĐANG CHẠY"
 
-		; Gắn thẳng chữ "Ngày/Giờ/Tháng" vào cột Giá Tiền
 		Local $sPriceTxt = ($iPrice == 0) ? "0 đ" : _FormatNumber($iPrice) & "đ /" & $sUnit
-
-		; Tạo dòng trong Listview
 		Local $sItemText = $sCode & "|" & $sName & "|" & $sPriceTxt & "|" & $sStatus
 		Local $hItem = GUICtrlCreateListViewItem($sItemText, $g_hListView_VIP)
 
-		; TÔ MÀU ĐẲNG CẤP
+		; Tự động tick và tô màu
 		If $bIsApplied Then
-			GUICtrlSetBkColor($hItem, 0x004400) ; Nền Xanh Lá Cây Đậm (Đang chọn)
-			GUICtrlSetColor($hItem, 0x00FF00)   ; Chữ Neon Xanh
+			_GUICtrlListView_SetItemChecked($g_hListView_VIP, $iListIndex, True)
+			GUICtrlSetBkColor($hItem, 0x004400)
+			GUICtrlSetColor($hItem, 0x00FF00)
 			GUICtrlSetFont($hItem, 10, 800)
-		ElseIf $sCode == "NONE" Then
-			GUICtrlSetBkColor($hItem, 0x2D2D30) ; Nền xám
-			GUICtrlSetColor($hItem, 0xFFFFFF)
 		ElseIf $sStatus == "🔒 KHÓA" Then
-			GUICtrlSetBkColor($hItem, 0x330000) ; Nền Đỏ Sẫm (Cấm)
-			GUICtrlSetColor($hItem, 0xFF6666)   ; Chữ đỏ nhạt
-		Else ; Đã mua hoặc Dev
+			GUICtrlSetBkColor($hItem, 0x330000)
+			GUICtrlSetColor($hItem, 0xFF6666)
+		Else
 			GUICtrlSetBkColor($hItem, 0x2D2D30)
-			GUICtrlSetColor($hItem, 0xFFD700)   ; Chữ Vàng Gold
+			GUICtrlSetColor($hItem, 0xFFD700)
 			GUICtrlSetFont($hItem, 10, 700)
 		EndIf
+
+		$iListIndex += 1
 	Next
+
+	; LƯU LẠI BỘ NHỚ CHECKBOX SAU KHI VẼ XONG
+	Local $sNewState = ""
+	For $k = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
+		If _GUICtrlListView_GetItemChecked($g_hListView_VIP, $k) Then $sNewState &= $k & "|"
+	Next
+	$g_sLastCheckedVIPList = $sNewState
 EndFunc   ;==>_UpdateVIPListUI
-Func _HandleVIPButtonPress()
-	Local $iSel = _GUICtrlListView_GetSelectedIndices($g_hListView_VIP)
-	If $iSel == "" Then
-		MsgBox(48, "Thông báo", "Sếp vui lòng click chọn một dòng trong bảng VIP ở trên!")
-		Return
-	EndIf
+Func _ProcessVIPListCheckboxes()
+	Local $bMethodChecked = False
+	Local $bNeedRedraw = False
 
-	Local $sCode = _GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 0)
-	Local $sName = _GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 1)
-	Local $sRawPrice = StringRegExpReplace(_GUICtrlListView_GetItemText($g_hListView_VIP, Number($iSel), 2), "\D", "")
-	Local $iPrice = Number($sRawPrice)
+	For $i = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
+		Local $sCode = _GUICtrlListView_GetItemText($g_hListView_VIP, $i, 0)
+		Local $sName = _GUICtrlListView_GetItemText($g_hListView_VIP, $i, 1)
+		Local $bIsChecked = _GUICtrlListView_GetItemChecked($g_hListView_VIP, $i)
+		Local $sRawPrice = StringRegExpReplace(_GUICtrlListView_GetItemText($g_hListView_VIP, $i, 2), "\D", "")
+		Local $iPrice = Number($sRawPrice)
 
-	; 1. Kiểm tra bản quyền
-	Local $bOwned = False
-	If $g_bIsDevMode Then $bOwned = True
-	If StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then $bOwned = True
+		If $bIsChecked Then
+			; Nếu người dùng chọn một phương pháp mới
+			If $g_sAppliedVIPCode <> $sCode Then
+				Local $bOwned = False
+				If $g_bIsDevMode Or StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then $bOwned = True
 
-	If Not $bOwned Then
-		_ShowVIPPaymentDialog($sCode, $sName, $iPrice, $g_sHWID)
-		Return
-	EndIf
+				If Not $bOwned Then
+					; XÓA DẤU TICK LẬP TỨC VÌ CHƯA MUA BẢN QUYỀN
+					_GUICtrlListView_SetItemChecked($g_hListView_VIP, $i, False)
+					$g_sLastCheckedVIPList = StringReplace($g_sLastCheckedVIPList, $i & "|", "")
 
-	; 2. NẾU MÃ LÀ "LAIKEP" -> NÓ LÀ TÍNH NĂNG BỔ TRỢ, KHÔNG PHẢI PHƯƠNG PHÁP ĐÁNH
-	If $sCode == "LAIKEP" Then
-		Local $iState = GUICtrlRead($g_hCheckbox_LaiKepVIP)
-		If $iState == $GUI_CHECKED Then
-			GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_UNCHECKED)
-			_UpdateStatus("⏸️ Đã TẮT tính năng Gồng Lãi Kép.")
-		Else
-			GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_CHECKED)
-			_UpdateStatus("🚀 Đã BẬT tính năng Gồng Lãi Kép! (Sẽ chạy ngầm cùng công thức bạn chọn)")
+					; Hiện bảng QR thanh toán
+					_ShowVIPPaymentDialog($sCode, $sName, $iPrice, $g_sHWID)
+					Return ; Chặn lại, không xử lý tiếp
+				Else
+					; Đã mua bản quyền -> Cho phép chạy
+					$g_sAppliedVIPCode = $sCode
+					$g_sAppliedVIPName = $sName
+					_UpdateStatus("🚀 Đã kích hoạt Phương pháp: " & $sName)
+					$bMethodChecked = True
+					$bNeedRedraw = True
+
+					; Tự động xóa tick của tất cả các phương pháp khác (Chỉ cho chạy 1 cái)
+					For $j = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
+						If $j <> $i Then
+							_GUICtrlListView_SetItemChecked($g_hListView_VIP, $j, False)
+							$g_sLastCheckedVIPList = StringReplace($g_sLastCheckedVIPList, $j & "|", "")
+						EndIf
+					Next
+				EndIf
+			Else
+				; Phương pháp này vốn đang chạy sẵn rồi
+				$bMethodChecked = True
+			EndIf
 		EndIf
-		Return ; Thoát ngang ở đây, không đổi màu bảng Listview
+	Next
+
+	; Nếu không có ô nào được đánh dấu tick -> Quay về CÔNG THỨC MẶC ĐỊNH
+	If Not $bMethodChecked And $g_sAppliedVIPCode <> "NONE" Then
+		$g_sAppliedVIPCode = "NONE"
+		$g_sAppliedVIPName = "Không dùng"
+		_UpdateStatus("✅ Đã tắt Phương pháp, Hệ thống sẽ chạy Công thức tùy chỉnh mặc định.")
+		$bNeedRedraw = True
 	EndIf
 
-	; 3. NẾU LÀ PHƯƠNG PHÁP CƯỢC THÌ ÁP DỤNG BÌNH THƯỜNG
-	$g_sAppliedVIPCode = $sCode
-	$g_sAppliedVIPName = $sName
-	If $sCode == "NONE" Then
-		_UpdateStatus("✅ Đã chuyển về: " & $sName)
-	Else
-		_UpdateStatus("🚀 Đã kích hoạt Phương pháp: " & $sName)
-	EndIf
+	If $bNeedRedraw Then _UpdateVIPListUI()
+EndFunc   ;==>_ProcessVIPListCheckboxes
+Func _CheckVIPStateChanges()
+	If $g_hListView_VIP = 0 Then Return
+	Local $sCurrentChecked = ""
+	For $i = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
+		If _GUICtrlListView_GetItemChecked($g_hListView_VIP, $i) Then
+			$sCurrentChecked &= $i & "|"
+		EndIf
+	Next
 
-	_UpdateVIPListUI()
-EndFunc   ;==>_HandleVIPButtonPress
+	; Nếu trạng thái các ô tick không thay đổi thì không làm gì cả
+	If $sCurrentChecked == $g_sLastCheckedVIPList Then Return
+
+	; Nếu có thay đổi (vừa tích vào hoặc bỏ tích), lập tức xử lý
+	$g_sLastCheckedVIPList = $sCurrentChecked
+	_ProcessVIPListCheckboxes()
+EndFunc   ;==>_CheckVIPStateChanges
