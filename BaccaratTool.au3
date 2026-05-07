@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.0" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.1" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -96,7 +96,8 @@ Global $g_hCombo_VolumeFilter, $g_hDate_VolumeFilter ; Thêm biến Lịch
 Global $g_iWaitTimeEnd_DuKich = 0
 Global $g_iWaitDuration_DuKich = 0
 Global $g_iSkipSignalsCount_DuKich = 0
-
+Global $g_iCycleProfit_Units = 0 ; Đếm Lãi/Lỗ chu kỳ (Đơn vị lót)
+Global $g_iHK_ValidHands_CycleStart = 0 ; Mốc đánh dấu ván bắt đầu của Chu kỳ Mới
 Global $g_hEdit_Checksheet = 0
 If $CmdLine[0] > 0 Then
 	For $i = 1 To $CmdLine[0]
@@ -205,13 +206,10 @@ Global $g_hCombo_VIPMethod
 Global $g_hBtn_BuyVIP
 Global $g_sActiveVIPs = "" ; Lưu danh sách các gói VIP đang được phép dùng
 
-; BẢNG GIÁ ĐA PHƯƠNG PHÁP (Mã Gói | Tên Hiển Thị | Giá Tiền)
-; === BẢNG GIÁ VIP (Mã | Tên | Giá | Đơn vị tính) ===
-; === BẢNG GIÁ VIP (Mã | Tên | Giá | Đơn vị tính) ===
-; === BẢNG GIÁ VIP (Chỉ hiển thị Phương pháp Cược) ===
-Global $g_aVipPackages[2][4] = [ _
+		Global $g_aVipPackages[3][4] = [ _
 		["NONE", "CÔNG THỨC CUSTOM (Nhập tay)", 0, "Miễn Phí"], _
-		["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"] _
+		["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"], _
+		["HK3", "MA TRẬN HONG KONG 3 CỘT", 50000, "Ngày"] _
 		]
 Global $g_bIsDevMode = False ; Biến ẩn chỉ dành cho Developer
 
@@ -1737,18 +1735,21 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 	Local $iSavedActiveIndex = $g_iLastActiveRuleIndex
 	Local $fProfitChange = 0
 
+	; Lấy số đơn vị (Lót) vừa đánh
+	Local $iLastBetUnits = $aQLV[1]
+
 	If $sActualResult = $sBetOn Then
-		; ==========================================
-		; [--- KHI THẮNG (WIN) ---]
-		; ==========================================
+		; KHI THẮNG (WIN)
+		$g_iCycleProfit_Units += $iLastBetUnits
+
 		If Not $g_bIsRealBetting Then
-			$g_iVirtualLosses = 0 ; Reset chuỗi thua ảo
+			$g_iVirtualLosses = 0
 			_UpdateStatus("🛡️ ĐÁNH NHÁP: Thắng ảo! Cầu chưa sập, tiếp tục rình...")
 		Else
-			$g_fTotalProfit += ($sBetOn = "B") ? ($g_fCurrentBet * 0.95) : $g_fCurrentBet
-			$fProfitChange = ($sBetOn == "B") ? ($g_fCurrentBet * 0.95) : $g_fCurrentBet
+			; CHÚ Ý: ĐÃ BỎ NHÂN 0.95 CHO BANKER THEO YÊU CẦU LÃI CHUẨN
+			$g_fTotalProfit += $g_fCurrentBet
+			$fProfitChange = $g_fCurrentBet
 
-			; KÉO ĐỈNH (TRAILING STOP)
 			If $g_fTotalProfit > $g_fPeakProfit Then $g_fPeakProfit = $g_fTotalProfit
 			_UpdateStrategyStats(1)
 
@@ -1769,8 +1770,6 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 			If GUICtrlRead($g_hCheckbox_ContinuousMode) <> $GUI_CHECKED Then
 				$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
 				_UpdateStatus("WIN! -> Cắt cầu lịch sử -> Chờ chuỗi tín hiệu mới.")
-
-				; NẾU CÓ BẬT ĐÁNH NHÁP THÌ RESET VỀ NHÁP KHI CẮT CẦU
 				If GUICtrlRead($g_hCheckbox_VirtualBet) = $GUI_CHECKED Then
 					$g_bIsRealBetting = False
 					$g_iVirtualLosses = 0
@@ -1778,15 +1777,15 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 			EndIf
 		EndIf
 	Else
-		; ==========================================
-		; [--- KHI THUA (LOSS) ---]
-		; ==========================================
+		; KHI THUA (LOSS)
+		$g_iCycleProfit_Units -= $iLastBetUnits
+
 		If Not $g_bIsRealBetting Then
 			$g_iVirtualLosses += 1
 			If $g_iVirtualLosses >= 3 Then
 				$g_bIsRealBetting = True
 				$g_iVirtualLosses = 0
-				$g_iCapitalLevel = 0 ; Bắt đầu đánh thật từ Lệnh 1
+				$g_iCapitalLevel = 0
 				If $bSepQLV And $iSavedActiveIndex > -1 Then $g_aRuleLevels[$iSavedActiveIndex] = 0
 				_UpdateStatus("🔥 NHÁP ĐÃ GÃY 3 LẦN -> VÀO TIỀN THẬT LỆNH 1 TỪ TAY SAU!")
 			Else
@@ -1806,7 +1805,6 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 			$g_iCapitalLevel = $aQLV[3]
 			$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
 			_UpdateStatus("LOSS! (Bám Chuỗi) -> Cắt cầu -> Về Lv " & $aQLV[3] & " chờ tín hiệu mới.")
-
 			If GUICtrlRead($g_hCheckbox_VirtualBet) = $GUI_CHECKED Then
 				$g_bIsRealBetting = False
 				$g_iVirtualLosses = 0
@@ -1821,6 +1819,22 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 	If $bSepQLV And $iSavedActiveIndex > -1 Then
 		$g_aRuleLevels[$iSavedActiveIndex] = $g_iCapitalLevel
 	EndIf
+
+	; =========================================================
+	; CHỐT LÃI CHU KỲ: ĐỔI MẪU CHO PHƯƠNG PHÁP HỒNG KÔNG
+	; =========================================================
+	If StringInStr($g_sAppliedVIPCode, "HK") Then
+		If $g_iCycleProfit_Units >= 0 Then
+			_UpdateStatus("🚀 Chu kỳ HK đã HÒA/DƯƠNG (" & $g_iCycleProfit_Units & " lót) -> CHỐT CHU KỲ, LẤY MẪU MỚI!")
+			$g_iCapitalLevel = 0
+			$g_iCycleProfit_Units = 0
+			$g_iHK_ValidHands_CycleStart = $g_iTotalBanker + $g_iTotalPlayer ; Ghi nhớ ván bắt đầu chu kỳ mới
+		ElseIf $g_iCapitalLevel == 0 Then
+			$g_iCycleProfit_Units = 0
+			$g_iHK_ValidHands_CycleStart = $g_iTotalBanker + $g_iTotalPlayer
+		EndIf
+	EndIf
+	; =========================================================
 
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
@@ -3990,80 +4004,55 @@ Func _SyncVolumeToServer()
 		EndIf
 	EndIf
 EndFunc   ;==>_SyncVolumeToServer
-; ====================================================================
-; ĐỘNG CƠ MA TRẬN HONG KONG 5 CỘT (ĐÃ NÂNG CẤP CHẾ ĐỘ TEST NGẦM)
-; ====================================================================
-; ====================================================================
-; ĐỘNG CƠ MA TRẬN HONG KONG 5 CỘT (ĐÃ MỞ KHÓA QLV TÙY CHỈNH)
-; ====================================================================
 Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
 	Local $aResult[3] = ["OBSERVE", "", 0]
 	Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Dọn sạch Hòa
-	Local $iLen = StringLen($sHistoryNow)
+	Local $iTotalValidHands = StringLen($sHistoryNow)
 
-	If $iLen < 5 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đang lấy 5 ván mẫu (" & $iLen & "/5)...")
+	; Tự động Fix lỗi nếu người dùng bấm Dừng/Start lại làm reset Lịch sử
+	If $g_iHK_ValidHands_CycleStart > $iTotalValidHands Then
+		$g_iHK_ValidHands_CycleStart = 0
+		$g_iCycleProfit_Units = 0
+	EndIf
+
+	; Số ván đã ra TRONG CHU KỲ HIỆN TẠI
+	Local $iHandsInCycle = $iTotalValidHands - $g_iHK_ValidHands_CycleStart
+
+	If $iHandsInCycle < 5 Then
+		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đang lấy Hàng Mẫu 5 tay (" & $iHandsInCycle & "/5)...")
 		Return $aResult
 	EndIf
 
-	Local $iRow = Floor($iLen / 5) + 1
-	Local $iCol = Mod($iLen, 5) + 1
+	; BƯỚC 1: Lấy Hàng Mẫu Chuẩn (Luôn là 5 tay đầu tiên của Chu kỳ này)
+	Local $sSampleRow = StringMid($sHistoryNow, $g_iHK_ValidHands_CycleStart + 1, 5)
 
-	; Lấy Hàng Mẫu
-	Local $sSampleRow = StringMid($sHistoryNow, ($iRow - 2) * 5 + 1, 5)
+	; BƯỚC 2: Xác định vị trí hiện tại (Hàng mấy, Cột mấy của chu kỳ)
+	Local $iRowInCycle = Floor($iHandsInCycle / 5) + 1
+	Local $iColInCycle = Mod($iHandsInCycle, 5) + 1
 
-	If $sSampleRow == "BBBBB" Or $sSampleRow == "PPPPP" Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Hàng mẫu bị BỆT (" & $sSampleRow & ") -> Bỏ qua Hàng " & $iRow)
+	; BƯỚC 3: Đợi cột 1 để lấy Trend V/X cho cả hàng
+	If $iColInCycle == 1 Then
+		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Hàng " & $iRowInCycle & " -> Đợi ván " & ($iTotalValidHands + 1) & " (Cột 1) để chốt Trend...")
 		Return $aResult
 	EndIf
 
-	Local $sCurrentRow = StringMid($sHistoryNow, ($iRow - 1) * 5 + 1, $iCol - 1)
+	; BƯỚC 4: Chốt Trend (V hoặc X) dựa vào Cột 1 của hàng hiện tại so với Cột 1 của Mẫu
+	Local $sSample_Col1 = StringMid($sSampleRow, 1, 1)
+	Local $iIndexOfCurrentRowStart = $g_iHK_ValidHands_CycleStart + ($iRowInCycle - 1) * 5 + 1
+	Local $sCurrent_Col1 = StringMid($sHistoryNow, $iIndexOfCurrentRowStart, 1)
 
-	; Cột 1 chỉ dùng để xác định Trend (V hay X) ban đầu, không đánh
-	If $iCol == 1 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đợi ván " & $iLen + 1 & " (Cột 1 Hàng " & $iRow & ") để bắt V/X...")
-		Return $aResult
-	EndIf
+	Local $sRowTrend = ($sSample_Col1 == $sCurrent_Col1) ? "V" : "X"
 
-	; Kiểm tra xem các cột trước đó đã Win chưa (Ăn 1 tay là nghỉ)
-	Local $bAlreadyWon = False
-	For $c = 2 To $iCol - 1
-		; Trend luôn lấy từ kết quả đối chiếu của Cột ngay trước đó
-		Local $sPrevTrend = (StringMid($sSampleRow, $c - 1, 1) == StringMid($sCurrentRow, $c - 1, 1)) ? "V" : "X"
-		Local $sSampleC = StringMid($sSampleRow, $c, 1)
+	; BƯỚC 5: Đánh liên tục các cột còn lại theo Trend đã chốt
+	Local $sSample_CurrentCol = StringMid($sSampleRow, $iColInCycle, 1)
+	Local $sBetChar = ($sRowTrend == "V") ? $sSample_CurrentCol : (($sSample_CurrentCol == "B") ? "P" : "B")
 
-		; Xác định lệnh đánh của Cột c
-		Local $sTarget = ($sPrevTrend == "V") ? $sSampleC : (($sSampleC == "B") ? "P" : "B")
-		Local $sActual = StringMid($sCurrentRow, $c, 1)
-
-		If $sActual == $sTarget Then
-			$bAlreadyWon = True
-			ExitLoop
-		EndIf
-	Next
-
-	If $bAlreadyWon Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đã WIN 1 tay ở Hàng " & $iRow & " -> Chờ Hàng mới.")
-		; ĐÃ XÓA LỆNH ÉP VỀ 0 Ở ĐÂY ĐỂ BẢO LƯU BẢNG QLV
-		Return $aResult
-	EndIf
-
-	; --- LOGIC BÁM V/X CHO TAY HIỆN TẠI (TAY SẮP ĐÁNH) ---
-	; Lấy Trend từ Cột ngay sát trước nó
-	Local $sPrevTrend = (StringMid($sSampleRow, $iCol - 1, 1) == StringMid($sCurrentRow, $iCol - 1, 1)) ? "V" : "X"
-	Local $sSampleNext = StringMid($sSampleRow, $iCol, 1)
-
-	; Nếu V thì đánh Đồng, nếu X thì đánh Nghịch
-	Local $sBetChar = ($sPrevTrend == "V") ? $sSampleNext : (($sSampleNext == "B") ? "P" : "B")
-
-	; ĐÃ XÓA LỆNH ÉP VỐN THEO CỘT ($iCol - 2) Ở ĐÂY
 	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
-
 	$aResult[0] = "BET"
 	$aResult[1] = $sBetChar
 	$aResult[2] = $aQLV[1]
 
-	If Not $bSilent Then _UpdateStatus("💎 VIP HK5 [Hàng " & $iRow & " Cột " & $iCol & "]: Theo Trend [" & $sPrevTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
+	If Not $bSilent Then _UpdateStatus("💎 VIP HK5 [Hàng " & $iRowInCycle & " Cột " & $iColInCycle & "]: Trend [" & $sRowTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
 	Return $aResult
 EndFunc   ;==>_Logic_VIP_HK5
 Func _UpdateVipButtonState()
@@ -4236,6 +4225,16 @@ Func _DecideNextAction()
 		Next
 		Return _Logic_VIP_HK5($sHistoryRaw)
 	EndIf
+	; ===============================================================
+	; LUỒNG DÀNH CHO VIP HK3 (Mới thêm)
+	; ===============================================================
+	If $g_sAppliedVIPCode == "HK3" And ($bHasVipCode Or $g_bIsDevMode) Then
+		Local $sHistoryRaw = ""
+		For $i = 0 To $iTotalHands - 1
+			$sHistoryRaw &= $g_aDisplayHistory[$i]
+		Next
+		Return _Logic_VIP_HK3($sHistoryRaw)
+	EndIf
 
 	; ===============================================================
 	; LUỒNG DÀNH CHO BẢN THƯỜNG (Có Du Kích, Nối Đuôi, Custom...)
@@ -4311,6 +4310,49 @@ Func _UpdateChecksheet()
 	Local $sOutput = ""
 
 	If $bIsVIPActive And StringInStr($sSelectedVIP, "HK5") Then
+		ElseIf $bIsVIPActive And StringInStr($sSelectedVIP, "HK3") Then
+		$sOutput &= "💎 MA TRẬN HONG KONG 3 CỘT" & @CRLF
+		$sOutput &= "======================================" & @CRLF
+
+		Local $iTotalRows = Floor($iLen / 3)
+		If Mod($iLen, 3) > 0 Then $iTotalRows += 1
+
+		For $r = 1 To $iTotalRows
+			Local $sRowData = StringMid($sHistoryNow, ($r - 1) * 3 + 1, 3)
+			Local $sFormattedRow = ""
+
+			For $c = 1 To 3
+				If $c <= StringLen($sRowData) Then
+					$sFormattedRow &= StringMid($sRowData, $c, 1) & "   "
+				Else
+					$sFormattedRow &= "-   "
+				EndIf
+			Next
+
+			$sOutput &= "[HÀNG " & StringFormat("%02d", $r) & "] KQ :  " & $sFormattedRow & @CRLF
+
+			; Vẽ hàng V/X ngay phía dưới (V: Đồng mẫu, X: Nghịch mẫu)
+			If $r > 1 Then
+				Local $sSampleRow = StringMid($sHistoryNow, ($r - 2) * 3 + 1, 3)
+				If StringLen($sSampleRow) == 3 And $sSampleRow <> "BBB" And $sSampleRow <> "PPP" Then
+					Local $sPredictRow = ""
+					For $c = 1 To 3
+						If $c <= StringLen($sRowData) Then
+							Local $sSC = StringMid($sSampleRow, $c, 1)
+							Local $sCC = StringMid($sRowData, $c, 1)
+							Local $sVX = ($sSC == $sCC) ? "V" : "X"
+							$sPredictRow &= $sVX & "   "
+						Else
+							$sPredictRow &= "-   "
+						EndIf
+					Next
+					$sOutput &= "        (V/X):  " & $sPredictRow & @CRLF
+				ElseIf $sSampleRow == "BBB" Or $sSampleRow == "PPP" Then
+					$sOutput &= "        -> Bão bệt (Dừng hàng này)" & @CRLF
+				EndIf
+			EndIf
+			$sOutput &= "--------------------------------------" & @CRLF
+		Next
 		$sOutput &= "💎 MA TRẬN HONG KONG 5 CỘT" & @CRLF
 		$sOutput &= "======================================" & @CRLF
 
@@ -4493,3 +4535,54 @@ Func _CheckVIPStateChanges()
 	$g_sLastCheckedVIPList = $sCurrentChecked
 	_ProcessVIPListCheckboxes()
 EndFunc   ;==>_CheckVIPStateChanges
+Func _Logic_VIP_HK3($sHistoryRaw, $bSilent = False)
+	Local $aResult[3] = ["OBSERVE", "", 0]
+	Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Dọn sạch Hòa
+	Local $iTotalValidHands = StringLen($sHistoryNow)
+
+	; Tự động Fix lỗi nếu người dùng bấm Dừng/Start lại làm reset Lịch sử
+	If $g_iHK_ValidHands_CycleStart > $iTotalValidHands Then
+		$g_iHK_ValidHands_CycleStart = 0
+		$g_iCycleProfit_Units = 0
+	EndIf
+
+	; Số ván đã ra TRONG CHU KỲ HIỆN TẠI
+	Local $iHandsInCycle = $iTotalValidHands - $g_iHK_ValidHands_CycleStart
+
+	If $iHandsInCycle < 3 Then
+		If Not $bSilent Then _UpdateStatus("💎 VIP HK3: Đang lấy Hàng Mẫu 3 tay (" & $iHandsInCycle & "/3)...")
+		Return $aResult
+	EndIf
+
+	; BƯỚC 1: Lấy Hàng Mẫu Chuẩn (Luôn là 3 tay đầu tiên của Chu kỳ này)
+	Local $sSampleRow = StringMid($sHistoryNow, $g_iHK_ValidHands_CycleStart + 1, 3)
+
+	; BƯỚC 2: Xác định vị trí hiện tại (Hàng mấy, Cột mấy của chu kỳ)
+	Local $iRowInCycle = Floor($iHandsInCycle / 3) + 1
+	Local $iColInCycle = Mod($iHandsInCycle, 3) + 1
+
+	; BƯỚC 3: Đợi cột 1 để lấy Trend V/X cho cả hàng
+	If $iColInCycle == 1 Then
+		If Not $bSilent Then _UpdateStatus("💎 VIP HK3: Hàng " & $iRowInCycle & " -> Đợi ván " & ($iTotalValidHands + 1) & " (Cột 1) để chốt Trend...")
+		Return $aResult
+	EndIf
+
+	; BƯỚC 4: Chốt Trend (V hoặc X) dựa vào Cột 1 của hàng hiện tại so với Cột 1 của Mẫu
+	Local $sSample_Col1 = StringMid($sSampleRow, 1, 1)
+	Local $iIndexOfCurrentRowStart = $g_iHK_ValidHands_CycleStart + ($iRowInCycle - 1) * 3 + 1
+	Local $sCurrent_Col1 = StringMid($sHistoryNow, $iIndexOfCurrentRowStart, 1)
+
+	Local $sRowTrend = ($sSample_Col1 == $sCurrent_Col1) ? "V" : "X"
+
+	; BƯỚC 5: Đánh liên tục các cột còn lại theo Trend đã chốt
+	Local $sSample_CurrentCol = StringMid($sSampleRow, $iColInCycle, 1)
+	Local $sBetChar = ($sRowTrend == "V") ? $sSample_CurrentCol : (($sSample_CurrentCol == "B") ? "P" : "B")
+
+	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
+	$aResult[0] = "BET"
+	$aResult[1] = $sBetChar
+	$aResult[2] = $aQLV[1]
+
+	If Not $bSilent Then _UpdateStatus("💎 VIP HK3 [Hàng " & $iRowInCycle & " Cột " & $iColInCycle & "]: Trend [" & $sRowTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
+	Return $aResult
+EndFunc   ;==>_Logic_VIP_HK3
