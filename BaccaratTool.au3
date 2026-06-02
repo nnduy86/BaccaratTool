@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.1" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.2" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -82,6 +82,12 @@ Global $g_hListView_VIP
 Global $g_hBtn_ActionVIP
 Global $g_sAppliedVIPCode = "NONE" ; Lưu mã VIP đang được khách sử dụng (Mặc định là NONE)
 Global $g_sAppliedVIPName = "Không dùng"
+; --- BIẾN CHO THƯ VIỆN CÔNG THỨC ---
+Global $g_hList_FormulaLibrary
+Global $g_hBtn_LoadFormula
+Global $g_hBtn_SaveFormula
+Global $g_hBtn_DeleteFormula
+
 ; =====================================================================
 ; KHAI BÁO BIẾN TOÀN CỤC CHO HỆ THỐNG
 ; (Để dưới cùng của phần #include)
@@ -206,7 +212,7 @@ Global $g_hCombo_VIPMethod
 Global $g_hBtn_BuyVIP
 Global $g_sActiveVIPs = "" ; Lưu danh sách các gói VIP đang được phép dùng
 
-		Global $g_aVipPackages[3][4] = [ _
+Global $g_aVipPackages[3][4] = [ _
 		["NONE", "CÔNG THỨC CUSTOM (Nhập tay)", 0, "Miễn Phí"], _
 		["HK5", "MA TRẬN HONG KONG 5 CỘT", 70000, "Ngày"], _
 		["HK3", "MA TRẬN HONG KONG 3 CỘT", 50000, "Ngày"] _
@@ -256,9 +262,7 @@ Func _Main()
 	EndIf
 
 	_CreateGUI($g_sExpiryDate)
-	AdlibRegister("_CheckVIPStateChanges", 200) ; <--- Chèn dòng này vào đây
 	_MainLoop()
-	_UpdateVIPListUI()
 EndFunc   ;==>_Main
 Func _CreateGUI($sExpiryDate)
 	$g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, -1, -1, -1, $WS_EX_CLIENTEDGE)
@@ -299,13 +303,13 @@ Func _CreateTab_MainTool()
 	_CreateGroup_BettingMethod()
 	_CreateGroup_QLV_On_Main()
 
-	_CreateGroup_StrategyStats()
 	_CreateGroup_BPT_Totals()
 	_CreateGroup_HistoryDisplay()
 	_CreateGroup_HistoryLog()
 
 	_CreateGroup_InfoAndTargets()
 	_CreateGroup_UserConfig_Main()
+	_CreateGroup_FormulaLibrary()
 EndFunc   ;==>_CreateTab_MainTool
 ; ==================================================================================================
 ; HÀM VÒNG LẶP CHÍNH
@@ -363,11 +367,15 @@ Func _MainLoop()
 						; Chặn không cho tick, đá văng cái tick đi
 						GUICtrlSetState($g_hCheckbox_LaiKepVIP, $GUI_UNCHECKED)
 						; Tự động bật bảng QR đòi tiền đúng 20.000đ/Ngày
-						_ShowVIPPaymentDialog("LAIKEP", "TÍNH NĂNG GỒNG LÃI KÉP", 20000, $g_sHWID)
 					EndIf
 				EndIf
+			Case $g_hBtn_LoadFormula
+				_LoadSelectedFormula()
+			Case $g_hBtn_SaveFormula
+				_SaveCurrentFormula()
+			Case $g_hBtn_DeleteFormula
+				_DeleteSelectedFormula()
 			Case $g_hListView_VIP
-				_ProcessVIPListCheckboxes()
 			Case $g_hButton_Start
 				If $g_bIsRunning Then
 					_StopProcess()
@@ -399,7 +407,6 @@ Func _MainLoop()
 				_HandleUnlock()
 			Case $g_hButton_Lock
 				$g_bIsDevMode = False
-				_UpdateVIPListUI()
 				_ToggleConfigControlsState(False)
 			Case $g_hButton_ActivateNew
 				_ShowActivationDialog_New($g_sHWID)
@@ -1408,7 +1415,7 @@ Func _LoadSettings()
 	Local $iInitWins = Number(IniRead($sFileStats, $sInitMethod, "TotalWins", "0"))
 	Local $iInitLosses = Number(IniRead($sFileStats, $sInitMethod, "TotalLosses", "0"))
 	_FullBacktest()
-	_UpdateVIPListUI()
+	_PopulateFormulaLibrary()
 EndFunc   ;==>_LoadSettings
 
 Func _StartProcess()
@@ -1739,16 +1746,20 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 	Local $iLastBetUnits = $aQLV[1]
 
 	If $sActualResult = $sBetOn Then
-		; KHI THẮNG (WIN)
 		$g_iCycleProfit_Units += $iLastBetUnits
 
 		If Not $g_bIsRealBetting Then
 			$g_iVirtualLosses = 0
 			_UpdateStatus("🛡️ ĐÁNH NHÁP: Thắng ảo! Cầu chưa sập, tiếp tục rình...")
 		Else
-			; CHÚ Ý: ĐÃ BỎ NHÂN 0.95 CHO BANKER THEO YÊU CẦU LÃI CHUẨN
-			$g_fTotalProfit += $g_fCurrentBet
-			$fProfitChange = $g_fCurrentBet
+			; SỬA LẠI: Trừ 5% phế nếu ăn Banker
+			If $sActualResult = "B" Then
+				$g_fTotalProfit += ($g_fCurrentBet * 0.95)
+				$fProfitChange = ($g_fCurrentBet * 0.95)
+			Else
+				$g_fTotalProfit += $g_fCurrentBet
+				$fProfitChange = $g_fCurrentBet
+			EndIf
 
 			If $g_fTotalProfit > $g_fPeakProfit Then $g_fPeakProfit = $g_fTotalProfit
 			_UpdateStrategyStats(1)
@@ -2379,7 +2390,10 @@ Func _SetControlsState($bEnable)
 	GUICtrlSetBkColor($g_hInput_TakeProfit, $iInputColor)
 	GUICtrlSetState($g_hInput_StopLoss, $iState)
 	GUICtrlSetBkColor($g_hInput_StopLoss, $iInputColor)
-
+GUICtrlSetState($g_hList_FormulaLibrary, $iState)
+GUICtrlSetState($g_hBtn_LoadFormula, $iState)
+GUICtrlSetState($g_hBtn_SaveFormula, $iState)
+GUICtrlSetState($g_hBtn_DeleteFormula, $iState)
 	GUICtrlSetState($g_hCombo_Profiles_Main, $iState)
 	GUICtrlSetState($g_hRadio_ClickMode_Control_Main, $iState)
 	GUICtrlSetState($g_hRadio_ClickMode_Mouse_Main, $iState)
@@ -3613,26 +3627,6 @@ Func _Vault_GetFilteredHistory()
 	EndIf
 	Return ""
 EndFunc   ;==>_Vault_GetFilteredHistory
-Func _CreateGroup_StrategyStats()
-	Local $hGroup = GUICtrlCreateGroup("💎 TRUNG TÂM PHƯƠNG PHÁP ĐỘC QUYỀN (VIP STORE)", 340, 40, 500, 250, $WS_GROUP, $WS_EX_CLIENTEDGE)
-	GUICtrlSetFont($hGroup, 11, 800)
-	GUICtrlSetColor($hGroup, 0xFF00FF)
-	GUICtrlSetBkColor($hGroup, 0xF5F5F5)
-
-	; Đã thêm mã 0x00000004 để tạo Checkbox và mở rộng chiều cao xuống 215
-	$g_hListView_VIP = GUICtrlCreateListView("Mã|Tên Phương Pháp|Giá Thuê|Trạng Thái", 350, 65, 480, 215, BitOR($LVS_REPORT, $LVS_SINGLESEL, $LVS_SHOWSELALWAYS), BitOR($WS_EX_CLIENTEDGE, $LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES, 0x00000004))
-
-	GUICtrlSetBkColor($g_hListView_VIP, 0x1E1E1E)
-	GUICtrlSetColor($g_hListView_VIP, 0xFFFFFF)
-	GUICtrlSetFont($g_hListView_VIP, 10, 600, "Segoe UI")
-
-	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 0, 60)
-	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 1, 210)
-	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 2, 100)
-	_GUICtrlListView_SetColumnWidth($g_hListView_VIP, 3, 105)
-
-	GUICtrlCreateGroup("", -99, -99, 1, 1)
-EndFunc   ;==>_CreateGroup_StrategyStats
 Func _GetGamingDate()
 	; Chốt sổ 7h sáng: Trả về chuỗi ngày YYYY/MM/DD
 	Local $iHour = @HOUR
@@ -4004,57 +3998,6 @@ Func _SyncVolumeToServer()
 		EndIf
 	EndIf
 EndFunc   ;==>_SyncVolumeToServer
-Func _Logic_VIP_HK5($sHistoryRaw, $bSilent = False)
-	Local $aResult[3] = ["OBSERVE", "", 0]
-	Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Dọn sạch Hòa
-	Local $iTotalValidHands = StringLen($sHistoryNow)
-
-	; Tự động Fix lỗi nếu người dùng bấm Dừng/Start lại làm reset Lịch sử
-	If $g_iHK_ValidHands_CycleStart > $iTotalValidHands Then
-		$g_iHK_ValidHands_CycleStart = 0
-		$g_iCycleProfit_Units = 0
-	EndIf
-
-	; Số ván đã ra TRONG CHU KỲ HIỆN TẠI
-	Local $iHandsInCycle = $iTotalValidHands - $g_iHK_ValidHands_CycleStart
-
-	If $iHandsInCycle < 5 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Đang lấy Hàng Mẫu 5 tay (" & $iHandsInCycle & "/5)...")
-		Return $aResult
-	EndIf
-
-	; BƯỚC 1: Lấy Hàng Mẫu Chuẩn (Luôn là 5 tay đầu tiên của Chu kỳ này)
-	Local $sSampleRow = StringMid($sHistoryNow, $g_iHK_ValidHands_CycleStart + 1, 5)
-
-	; BƯỚC 2: Xác định vị trí hiện tại (Hàng mấy, Cột mấy của chu kỳ)
-	Local $iRowInCycle = Floor($iHandsInCycle / 5) + 1
-	Local $iColInCycle = Mod($iHandsInCycle, 5) + 1
-
-	; BƯỚC 3: Đợi cột 1 để lấy Trend V/X cho cả hàng
-	If $iColInCycle == 1 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK5: Hàng " & $iRowInCycle & " -> Đợi ván " & ($iTotalValidHands + 1) & " (Cột 1) để chốt Trend...")
-		Return $aResult
-	EndIf
-
-	; BƯỚC 4: Chốt Trend (V hoặc X) dựa vào Cột 1 của hàng hiện tại so với Cột 1 của Mẫu
-	Local $sSample_Col1 = StringMid($sSampleRow, 1, 1)
-	Local $iIndexOfCurrentRowStart = $g_iHK_ValidHands_CycleStart + ($iRowInCycle - 1) * 5 + 1
-	Local $sCurrent_Col1 = StringMid($sHistoryNow, $iIndexOfCurrentRowStart, 1)
-
-	Local $sRowTrend = ($sSample_Col1 == $sCurrent_Col1) ? "V" : "X"
-
-	; BƯỚC 5: Đánh liên tục các cột còn lại theo Trend đã chốt
-	Local $sSample_CurrentCol = StringMid($sSampleRow, $iColInCycle, 1)
-	Local $sBetChar = ($sRowTrend == "V") ? $sSample_CurrentCol : (($sSample_CurrentCol == "B") ? "P" : "B")
-
-	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
-	$aResult[0] = "BET"
-	$aResult[1] = $sBetChar
-	$aResult[2] = $aQLV[1]
-
-	If Not $bSilent Then _UpdateStatus("💎 VIP HK5 [Hàng " & $iRowInCycle & " Cột " & $iColInCycle & "]: Trend [" & $sRowTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
-	Return $aResult
-EndFunc   ;==>_Logic_VIP_HK5
 Func _UpdateVipButtonState()
 	Local $sSelected = GUICtrlRead($g_hCombo_VIPMethod)
 	Local $bIsVIPSelected = ($sSelected <> $g_aVipPackages[0][1])
@@ -4118,89 +4061,6 @@ Func _UpdateVipButtonState()
 		GUICtrlSetState($g_hBtn_BuyVIP, $GUI_ENABLE)
 	EndIf
 EndFunc   ;==>_UpdateVipButtonState
-Func _HandleBuyVIP()
-	Local $sSelected = GUICtrlRead($g_hCombo_VIPMethod)
-	Local $sCode = "", $iPrice = 0
-	For $i = 1 To UBound($g_aVipPackages) - 1
-		If $g_aVipPackages[$i][1] == $sSelected Then
-			$sCode = $g_aVipPackages[$i][0]
-			$iPrice = $g_aVipPackages[$i][2]
-			ExitLoop
-		EndIf
-	Next
-	If $sCode = "" Then Return
-
-	_ShowVIPPaymentDialog($sCode, $sSelected, $iPrice, $g_sHWID)
-EndFunc   ;==>_HandleBuyVIP
-
-; =====================================================================
-; BẢNG THANH TOÁN QR DÀNH RIÊNG CHO MUA GÓI VIP ĐA MỆNH GIÁ
-; =====================================================================
-Func _ShowVIPPaymentDialog($sCode, $sName, $iPrice, $sHWID)
-	Local $hPayGUI = GUICreate("MUA GÓI VIP ĐỘC QUYỀN", 450, 520, -1, -1, $WS_POPUP, $WS_EX_TOPMOST)
-	GUISetBkColor(0x111111, $hPayGUI)
-
-	Local $hBtnCloseX = GUICtrlCreateButton("X", 400, 10, 40, 35)
-	GUICtrlSetBkColor($hBtnCloseX, 0xCC0000)
-	GUICtrlSetColor($hBtnCloseX, 0xFFFFFF)
-	GUICtrlSetFont(-1, 14, 800)
-
-	GUICtrlCreateLabel("💎 MUA GÓI: " & $sName, 10, 15, 380, 40, $SS_CENTER)
-	GUICtrlSetFont(-1, 11, 800)
-	GUICtrlSetColor(-1, 0xFF00FF)
-	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
-
-	Local $oIE = ObjCreate("Shell.Explorer.2")
-	Local $hActiveX = GUICtrlCreateObj($oIE, 85, 60, 280, 280)
-
-	GUICtrlCreateLabel("Mức phí: " & _FormatNumber($iPrice) & " VNĐ / Ngày", 10, 365, 430, 25, $SS_CENTER)
-	GUICtrlSetFont(-1, 16, 800)
-	GUICtrlSetColor(-1, 0x00FF00)
-
-	; Nội dung chuyển khoản chuyên biệt cho từng gói VIP: MUAVIP HK5 XXXXX
-	Local $sContent = "MUAVIP " & $sCode & " " & StringRight($sHWID, 6)
-	GUICtrlCreateLabel("Nội dung CK: " & $sContent, 10, 405, 430, 25, $SS_CENTER)
-	GUICtrlSetFont(-1, 14, 800)
-	GUICtrlSetColor(-1, 0xFFD700)
-
-	Local $hStatusLabel = GUICtrlCreateLabel("⏳ Đang chờ giao dịch... (7s)", 10, 455, 430, 35, BitOR($SS_CENTER, $SS_SUNKEN, 0x0200))
-	GUICtrlSetFont(-1, 11, 700)
-	GUICtrlSetColor(-1, 0x00FFFF)
-
-	Local $sQrUrl = "https://qr.sepay.vn/img?bank=MB&acc=0986071012&amount=" & $iPrice & "&des=" & StringReplace($sContent, " ", "%20") & "&name=NGUYEN%20NGOC%20DUY"
-	$oIE.navigate("about:blank")
-	While $oIE.readyState <> 4
-		Sleep(10)
-	WEnd
-	$oIE.document.open()
-	$oIE.document.write("<html><body style='margin:0;padding:0;overflow:hidden;background-color:#111111;text-align:center;' scroll='no'><img src='" & $sQrUrl & "' width='280' height='280' style='border: 2px solid #00FFFF;'></body></html>")
-	$oIE.document.close()
-
-	GUISetState(@SW_SHOW, $hPayGUI)
-	Local $hTimer = TimerInit()
-
-	While 1
-		Local $aMsg = GUIGetMsg(1)
-		If $aMsg[0] = $hBtnCloseX Or $aMsg[0] = $GUI_EVENT_CLOSE Then ExitLoop
-
-		If TimerDiff($hTimer) > 7000 Then
-			GUICtrlSetData($hStatusLabel, "🔄 Đang kiểm tra máy chủ...")
-			Local $aCheck = _CheckLicenseOnline($sHWID)
-
-			; Nếu mua thành công, máy chủ sẽ quăng mã HK5 vào biến danh sách
-			If StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then
-				GUICtrlSetData($hStatusLabel, "✅ MUA VIP THÀNH CÔNG! Đã mở khóa.")
-				GUICtrlSetColor($hStatusLabel, 0x00FF00)
-				_UpdateVipButtonState() ; Reset lại nút bên ngoài
-				Sleep(1500)
-				ExitLoop
-			EndIf
-			$hTimer = TimerInit()
-			GUICtrlSetData($hStatusLabel, "⏳ Đang chờ giao dịch... (7s)")
-		EndIf
-	WEnd
-	GUIDelete($hPayGUI)
-EndFunc   ;==>_ShowVIPPaymentDialog
 
 ; ====================================================================
 ; KIỂM TRA BẢO MẬT TRƯỚC KHI CHẠY TOOL
@@ -4211,34 +4071,7 @@ Func _DecideNextAction()
 
 	Local $iTotalHands = UBound($g_aDisplayHistory)
 
-	; === KIỂM TRA QUYỀN VIP ===
-	Local $bHasVipCode = False
-	If StringInStr("," & $g_sActiveVIPs & ",", "," & $g_sAppliedVIPCode & ",") Then $bHasVipCode = True
-
-	; ===============================================================
-	; LUỒNG DÀNH CHO VIP (Đánh bằng HK5)
-	; ===============================================================
-	If $g_sAppliedVIPCode == "HK5" And ($bHasVipCode Or $g_bIsDevMode) Then
-		Local $sHistoryRaw = ""
-		For $i = 0 To $iTotalHands - 1
-			$sHistoryRaw &= $g_aDisplayHistory[$i]
-		Next
-		Return _Logic_VIP_HK5($sHistoryRaw)
-	EndIf
-	; ===============================================================
-	; LUỒNG DÀNH CHO VIP HK3 (Mới thêm)
-	; ===============================================================
-	If $g_sAppliedVIPCode == "HK3" And ($bHasVipCode Or $g_bIsDevMode) Then
-		Local $sHistoryRaw = ""
-		For $i = 0 To $iTotalHands - 1
-			$sHistoryRaw &= $g_aDisplayHistory[$i]
-		Next
-		Return _Logic_VIP_HK3($sHistoryRaw)
-	EndIf
-
-	; ===============================================================
-	; LUỒNG DÀNH CHO BẢN THƯỜNG (Có Du Kích, Nối Đuôi, Custom...)
-	; ===============================================================
+	; LUỒNG DÀNH CHO BẢN THƯỜNG (Du Kích, Nối Đuôi, Custom...)
 	If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
 		If $g_iWaitTimeEnd_DuKich <> 0 Then
 			Local $iElapsed = TimerDiff($g_iWaitTimeEnd_DuKich)
@@ -4310,7 +4143,7 @@ Func _UpdateChecksheet()
 	Local $sOutput = ""
 
 	If $bIsVIPActive And StringInStr($sSelectedVIP, "HK5") Then
-		ElseIf $bIsVIPActive And StringInStr($sSelectedVIP, "HK3") Then
+	ElseIf $bIsVIPActive And StringInStr($sSelectedVIP, "HK3") Then
 		$sOutput &= "💎 MA TRẬN HONG KONG 3 CỘT" & @CRLF
 		$sOutput &= "======================================" & @CRLF
 
@@ -4411,178 +4244,112 @@ Func _UpdateChecksheet()
 	GUICtrlSetData($g_hEdit_Checksheet, $sOutput)
 	GUICtrlSendMsg($g_hEdit_Checksheet, $EM_LINESCROLL, 0, 9999)
 EndFunc   ;==>_UpdateChecksheet
-Func _UpdateVIPListUI()
-	If $g_hListView_VIP = 0 Then Return
-	_GUICtrlListView_DeleteAllItems($g_hListView_VIP)
+Func _CreateGroup_FormulaLibrary()
+	Local $hGroup = GUICtrlCreateGroup("📚 THƯ VIỆN CÔNG THỨC YÊU THÍCH", 340, 40, 500, 250, $WS_GROUP, $WS_EX_CLIENTEDGE)
+	GUICtrlSetFont($hGroup, 11, 800)
+	GUICtrlSetColor($hGroup, 0x0000FF)
+	GUICtrlSetBkColor($hGroup, 0xF5F5F5)
 
-	Local $iListIndex = 0
+	; Danh sách công thức (List Box)
+	$g_hList_FormulaLibrary = GUICtrlCreateList("", 350, 65, 300, 215, BitOR(0x00200000, 0x00800000)) ; VSCROLL | BORDER
+	GUICtrlSetFont($g_hList_FormulaLibrary, 10, 600)
+	GUICtrlSetBkColor($g_hList_FormulaLibrary, 0x1E1E1E)
+	GUICtrlSetColor($g_hList_FormulaLibrary, 0x00FF00)
 
-	For $i = 1 To UBound($g_aVipPackages) - 1
-		Local $sCode = $g_aVipPackages[$i][0]
-		Local $sName = $g_aVipPackages[$i][1]
-		Local $iPrice = $g_aVipPackages[$i][2]
-		Local $sUnit = $g_aVipPackages[$i][3]
+	; Các nút bấm điều khiển
+	$g_hBtn_LoadFormula = GUICtrlCreateButton("▶ NẠP VÀO TOOL", 665, 65, 160, 40)
+	GUICtrlSetBkColor($g_hBtn_LoadFormula, 0x33CC33)
+	GUICtrlSetColor($g_hBtn_LoadFormula, 0xFFFFFF)
+	GUICtrlSetFont($g_hBtn_LoadFormula, 10, 700)
 
-		Local $sStatus = "🔒 KHÓA"
-		If $g_bIsDevMode Or StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then
-			$sStatus = "🔓 ĐÃ THUÊ"
-		EndIf
+	$g_hBtn_SaveFormula = GUICtrlCreateButton("💾 LƯU CÔNG THỨC MỚI", 665, 115, 160, 40)
+	GUICtrlSetBkColor($g_hBtn_SaveFormula, 0x0082FA)
+	GUICtrlSetColor($g_hBtn_SaveFormula, 0xFFFFFF)
+	GUICtrlSetFont($g_hBtn_SaveFormula, 10, 700)
 
-		Local $bIsApplied = False
-		If $g_sAppliedVIPCode == $sCode Then $bIsApplied = True
-		If $bIsApplied Then $sStatus = "✅ ĐANG CHẠY"
+	$g_hBtn_DeleteFormula = GUICtrlCreateButton("❌ XÓA MẪU CHỌN", 665, 165, 160, 40)
+	GUICtrlSetBkColor($g_hBtn_DeleteFormula, 0xFF4141)
+	GUICtrlSetColor($g_hBtn_DeleteFormula, 0xFFFFFF)
+	GUICtrlSetFont($g_hBtn_DeleteFormula, 10, 700)
 
-		Local $sPriceTxt = ($iPrice == 0) ? "0 đ" : _FormatNumber($iPrice) & "đ /" & $sUnit
-		Local $sItemText = $sCode & "|" & $sName & "|" & $sPriceTxt & "|" & $sStatus
-		Local $hItem = GUICtrlCreateListViewItem($sItemText, $g_hListView_VIP)
+	GUICtrlCreateLabel("Mẹo: Chọn một mẫu bên trái rồi bấm NẠP để tự động điền vào ô Công Thức Cược.", 665, 215, 160, 50)
+	GUICtrlSetFont(-1, 8.5, 400)
+	GUICtrlSetColor(-1, 0x555555)
 
-		; Tự động tick và tô màu
-		If $bIsApplied Then
-			_GUICtrlListView_SetItemChecked($g_hListView_VIP, $iListIndex, True)
-			GUICtrlSetBkColor($hItem, 0x004400)
-			GUICtrlSetColor($hItem, 0x00FF00)
-			GUICtrlSetFont($hItem, 10, 800)
-		ElseIf $sStatus == "🔒 KHÓA" Then
-			GUICtrlSetBkColor($hItem, 0x330000)
-			GUICtrlSetColor($hItem, 0xFF6666)
-		Else
-			GUICtrlSetBkColor($hItem, 0x2D2D30)
-			GUICtrlSetColor($hItem, 0xFFD700)
-			GUICtrlSetFont($hItem, 10, 700)
-		EndIf
+	GUICtrlCreateGroup("", -99, -99, 1, 1)
+EndFunc   ;==>_CreateGroup_FormulaLibrary
+; =====================================================================
+; HỆ THỐNG QUẢN LÝ THƯ VIỆN CÔNG THỨC
+; =====================================================================
+Func _EnsureDefaultFormulasExist()
+	Local $aData = IniReadSection($g_sIniPath, "UserFormulas")
+	If @error Or $aData[0][0] = 0 Then
+		; Đã đổi sang tiếng Việt KHÔNG DẤU để chống lỗi hiển thị file INI
+		IniWrite($g_sIniPath, "UserFormulas", "Danh Theo Duoi (Bam Cau)", "B-B|NL|P-P")
+		IniWrite($g_sIniPath, "UserFormulas", "Danh Chan (Be Cau 3)", "BBB-P|NL|PPP-B")
+		IniWrite($g_sIniPath, "UserFormulas", "Danh Ping Pong", "B-P|NL|P-B")
+	EndIf
+EndFunc
+Func _PopulateFormulaLibrary()
+	_EnsureDefaultFormulasExist()
+	GUICtrlSetData($g_hList_FormulaLibrary, "") ; Xóa sạch danh sách cũ
+	Local $aData = IniReadSection($g_sIniPath, "UserFormulas")
+	If Not @error Then
+		Local $sList = ""
+		For $i = 1 To $aData[0][0]
+			$sList &= $aData[$i][0] & "|"
+		Next
+		GUICtrlSetData($g_hList_FormulaLibrary, $sList)
+	EndIf
+EndFunc   ;==>_PopulateFormulaLibrary
 
-		$iListIndex += 1
-	Next
-
-	; LƯU LẠI BỘ NHỚ CHECKBOX SAU KHI VẼ XONG
-	Local $sNewState = ""
-	For $k = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
-		If _GUICtrlListView_GetItemChecked($g_hListView_VIP, $k) Then $sNewState &= $k & "|"
-	Next
-	$g_sLastCheckedVIPList = $sNewState
-EndFunc   ;==>_UpdateVIPListUI
-Func _ProcessVIPListCheckboxes()
-	Local $bMethodChecked = False
-	Local $bNeedRedraw = False
-
-	For $i = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
-		Local $sCode = _GUICtrlListView_GetItemText($g_hListView_VIP, $i, 0)
-		Local $sName = _GUICtrlListView_GetItemText($g_hListView_VIP, $i, 1)
-		Local $bIsChecked = _GUICtrlListView_GetItemChecked($g_hListView_VIP, $i)
-		Local $sRawPrice = StringRegExpReplace(_GUICtrlListView_GetItemText($g_hListView_VIP, $i, 2), "\D", "")
-		Local $iPrice = Number($sRawPrice)
-
-		If $bIsChecked Then
-			; Nếu người dùng chọn một phương pháp mới
-			If $g_sAppliedVIPCode <> $sCode Then
-				Local $bOwned = False
-				If $g_bIsDevMode Or StringInStr("," & $g_sActiveVIPs & ",", "," & $sCode & ",") Then $bOwned = True
-
-				If Not $bOwned Then
-					; XÓA DẤU TICK LẬP TỨC VÌ CHƯA MUA BẢN QUYỀN
-					_GUICtrlListView_SetItemChecked($g_hListView_VIP, $i, False)
-					$g_sLastCheckedVIPList = StringReplace($g_sLastCheckedVIPList, $i & "|", "")
-
-					; Hiện bảng QR thanh toán
-					_ShowVIPPaymentDialog($sCode, $sName, $iPrice, $g_sHWID)
-					Return ; Chặn lại, không xử lý tiếp
-				Else
-					; Đã mua bản quyền -> Cho phép chạy
-					$g_sAppliedVIPCode = $sCode
-					$g_sAppliedVIPName = $sName
-					_UpdateStatus("🚀 Đã kích hoạt Phương pháp: " & $sName)
-					$bMethodChecked = True
-					$bNeedRedraw = True
-
-					; Tự động xóa tick của tất cả các phương pháp khác (Chỉ cho chạy 1 cái)
-					For $j = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
-						If $j <> $i Then
-							_GUICtrlListView_SetItemChecked($g_hListView_VIP, $j, False)
-							$g_sLastCheckedVIPList = StringReplace($g_sLastCheckedVIPList, $j & "|", "")
-						EndIf
-					Next
-				EndIf
-			Else
-				; Phương pháp này vốn đang chạy sẵn rồi
-				$bMethodChecked = True
-			EndIf
-		EndIf
-	Next
-
-	; Nếu không có ô nào được đánh dấu tick -> Quay về CÔNG THỨC MẶC ĐỊNH
-	If Not $bMethodChecked And $g_sAppliedVIPCode <> "NONE" Then
-		$g_sAppliedVIPCode = "NONE"
-		$g_sAppliedVIPName = "Không dùng"
-		_UpdateStatus("✅ Đã tắt Phương pháp, Hệ thống sẽ chạy Công thức tùy chỉnh mặc định.")
-		$bNeedRedraw = True
+Func _LoadSelectedFormula()
+	Local $sSelected = GUICtrlRead($g_hList_FormulaLibrary)
+	If $sSelected = "" Then
+		MsgBox(48, "Lỗi", "Vui lòng chọn một công thức trong thư viện để Nạp!")
+		Return
 	EndIf
 
-	If $bNeedRedraw Then _UpdateVIPListUI()
-EndFunc   ;==>_ProcessVIPListCheckboxes
-Func _CheckVIPStateChanges()
-	If $g_hListView_VIP = 0 Then Return
-	Local $sCurrentChecked = ""
-	For $i = 0 To _GUICtrlListView_GetItemCount($g_hListView_VIP) - 1
-		If _GUICtrlListView_GetItemChecked($g_hListView_VIP, $i) Then
-			$sCurrentChecked &= $i & "|"
-		EndIf
-	Next
+	Local $sFormula = IniRead($g_sIniPath, "UserFormulas", $sSelected, "")
+	If $sFormula <> "" Then
+		GUICtrlSetData($g_hInput_CustomRules, StringReplace($sFormula, "|NL|", @CRLF))
+		_UpdateStatus("✅ Đã nạp thành công công thức: [" & $sSelected & "]")
 
-	; Nếu trạng thái các ô tick không thay đổi thì không làm gì cả
-	If $sCurrentChecked == $g_sLastCheckedVIPList Then Return
+		; Kích hoạt auto-save cho công thức vừa nạp
+		$g_bNeedAutoSave = True
+		$g_hAutoSaveTimer = TimerInit()
+	EndIf
+EndFunc   ;==>_LoadSelectedFormula
 
-	; Nếu có thay đổi (vừa tích vào hoặc bỏ tích), lập tức xử lý
-	$g_sLastCheckedVIPList = $sCurrentChecked
-	_ProcessVIPListCheckboxes()
-EndFunc   ;==>_CheckVIPStateChanges
-Func _Logic_VIP_HK3($sHistoryRaw, $bSilent = False)
-	Local $aResult[3] = ["OBSERVE", "", 0]
-	Local $sHistoryNow = StringReplace($sHistoryRaw, "T", "") ; Dọn sạch Hòa
-	Local $iTotalValidHands = StringLen($sHistoryNow)
-
-	; Tự động Fix lỗi nếu người dùng bấm Dừng/Start lại làm reset Lịch sử
-	If $g_iHK_ValidHands_CycleStart > $iTotalValidHands Then
-		$g_iHK_ValidHands_CycleStart = 0
-		$g_iCycleProfit_Units = 0
+Func _SaveCurrentFormula()
+	Local $sCurrent = StringStripWS(GUICtrlRead($g_hInput_CustomRules), 3)
+	If $sCurrent = "" Then
+		MsgBox(48, "Lỗi", "Ô nhập công thức cược đang trống, không có gì để lưu!")
+		Return
 	EndIf
 
-	; Số ván đã ra TRONG CHU KỲ HIỆN TẠI
-	Local $iHandsInCycle = $iTotalValidHands - $g_iHK_ValidHands_CycleStart
+	Local $sName = InputBox("Lưu Công Thức", "Đặt tên cho công thức (Nếu trùng tên cũ sẽ ghi đè):", "Công thức mới", "", 300, 150)
+	If @error Or $sName = "" Then Return
 
-	If $iHandsInCycle < 3 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK3: Đang lấy Hàng Mẫu 3 tay (" & $iHandsInCycle & "/3)...")
-		Return $aResult
+	; Chuẩn hóa xuống dòng để lưu an toàn vào file INI
+	Local $sFormatted = StringReplace($sCurrent, @CRLF, "|NL|")
+	$sFormatted = StringReplace($sFormatted, @LF, "|NL|")
+
+	IniWrite($g_sIniPath, "UserFormulas", $sName, $sFormatted)
+	MsgBox(64, "Thành Công", "Đã lưu công thức vào thư viện: " & $sName)
+	_PopulateFormulaLibrary()
+EndFunc   ;==>_SaveCurrentFormula
+
+Func _DeleteSelectedFormula()
+	Local $sSelected = GUICtrlRead($g_hList_FormulaLibrary)
+	If $sSelected = "" Then
+		MsgBox(48, "Lỗi", "Vui lòng chọn công thức cần xóa từ danh sách.")
+		Return
 	EndIf
 
-	; BƯỚC 1: Lấy Hàng Mẫu Chuẩn (Luôn là 3 tay đầu tiên của Chu kỳ này)
-	Local $sSampleRow = StringMid($sHistoryNow, $g_iHK_ValidHands_CycleStart + 1, 3)
-
-	; BƯỚC 2: Xác định vị trí hiện tại (Hàng mấy, Cột mấy của chu kỳ)
-	Local $iRowInCycle = Floor($iHandsInCycle / 3) + 1
-	Local $iColInCycle = Mod($iHandsInCycle, 3) + 1
-
-	; BƯỚC 3: Đợi cột 1 để lấy Trend V/X cho cả hàng
-	If $iColInCycle == 1 Then
-		If Not $bSilent Then _UpdateStatus("💎 VIP HK3: Hàng " & $iRowInCycle & " -> Đợi ván " & ($iTotalValidHands + 1) & " (Cột 1) để chốt Trend...")
-		Return $aResult
+	If MsgBox(36, "Xác Nhận Xóa", "Bạn có chắc chắn muốn xóa vĩnh viễn công thức: " & $sSelected & "?") = 6 Then
+		IniDelete($g_sIniPath, "UserFormulas", $sSelected)
+		MsgBox(64, "Thành Công", "Đã xóa công thức.")
+		_PopulateFormulaLibrary()
 	EndIf
-
-	; BƯỚC 4: Chốt Trend (V hoặc X) dựa vào Cột 1 của hàng hiện tại so với Cột 1 của Mẫu
-	Local $sSample_Col1 = StringMid($sSampleRow, 1, 1)
-	Local $iIndexOfCurrentRowStart = $g_iHK_ValidHands_CycleStart + ($iRowInCycle - 1) * 3 + 1
-	Local $sCurrent_Col1 = StringMid($sHistoryNow, $iIndexOfCurrentRowStart, 1)
-
-	Local $sRowTrend = ($sSample_Col1 == $sCurrent_Col1) ? "V" : "X"
-
-	; BƯỚC 5: Đánh liên tục các cột còn lại theo Trend đã chốt
-	Local $sSample_CurrentCol = StringMid($sSampleRow, $iColInCycle, 1)
-	Local $sBetChar = ($sRowTrend == "V") ? $sSample_CurrentCol : (($sSample_CurrentCol == "B") ? "P" : "B")
-
-	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
-	$aResult[0] = "BET"
-	$aResult[1] = $sBetChar
-	$aResult[2] = $aQLV[1]
-
-	If Not $bSilent Then _UpdateStatus("💎 VIP HK3 [Hàng " & $iRowInCycle & " Cột " & $iColInCycle & "]: Trend [" & $sRowTrend & "] -> Vã Lệnh " & $g_iCapitalLevel & " vào " & $sBetChar)
-	Return $aResult
-EndFunc   ;==>_Logic_VIP_HK3
+EndFunc   ;==>_DeleteSelectedFormula
