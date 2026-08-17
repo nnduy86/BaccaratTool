@@ -27,7 +27,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool-Baccarat"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.4" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.5" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
@@ -1973,15 +1973,23 @@ Func _StartProcess_LongLong()
 
 				_UpdateStatus(StringFormat("🔥 Lệnh %d (Hệ số x%s): Đánh [%s] (%s đ). Đợi Xanh Lá...", $iTargetLevel, $iBetUnits, $sDoorNameDisplay, _FormatNumber($fPendingBetAmount)))
 
-				Local $iWaitTimer = TimerInit()
-				While Not _IsBetTimeOpen() And $g_bIsRunning
-					_ProcessGUIMessages()
-					Sleep(30)
-					If TimerDiff($iWaitTimer) > 15000 Then ExitLoop
-				WEnd
+Local $bTimerFound = False ; Thêm biến nhớ khóa mục tiêu
+Local $iWaitTimer = TimerInit()
 
-				If $g_bIsRunning And _IsBetTimeOpen() Then
-					Local $sWinMode = GUICtrlRead($g_hCombo_WinMode)
+While $g_bIsRunning
+	If _IsBetTimeOpen() Then
+		$bTimerFound = True ; Nhìn thấy chớp sáng là chốt luôn
+		ExitLoop
+	EndIf
+
+	_ProcessGUIMessages()
+	Sleep(30)
+	If TimerDiff($iWaitTimer) > 15000 Then ExitLoop
+WEnd
+
+; Đổi điều kiện kiểm tra lại thành biến nhớ đã khóa
+If $g_bIsRunning And $bTimerFound Then
+	Local $sWinMode = GUICtrlRead($g_hCombo_WinMode)
 					If $sWinMode = "Thu nhỏ khi cược -> Bật lên" Or $sWinMode = "Thu nhỏ ẩn đi luôn" Then
 						GUISetState(@SW_MINIMIZE, $g_hGUI)
 						Sleep(150)
