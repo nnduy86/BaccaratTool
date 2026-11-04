@@ -7,6 +7,9 @@
 #include <GuiComboBox.au3>
 #include <Date.au3>
 #include <Inet.au3>
+#include <GDIPlus.au3>
+#include <ScreenCapture.au3>
+#include <File.au3>
 #include <WinAPI.au3>
 #include <AutoItConstants.au3>
 #include <Array.au3>
@@ -23,16 +26,61 @@ Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toà
 ; ==================================================================================================
 ; --- PHẦN CẤU HÌNH (BẮT BUỘC) ---
 ; ==================================================================================================
+Global $g_sCustomerLogin = ""
+Global $g_sCustomerRole = ""
 Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbzYsojeFPtUJNwNKMMclP7zuj9TO6XYyq16O02Pi-ef87OP2kYz3TV3kT02XBw_GXuE/exec"
 Global Const $g_sDevPassword = "nmn12nntv21"
-Global Const $g_sToolName = "Tool-Baccarat"
+Global Const $g_sToolName = "Tool_AIO"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.5" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.6" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
-Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/BaccaratTool.exe"
+Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
+
 ; --- KHAI BÁO BIẾN TOÀN CỤC ---
 ; ==================================================================================================
+; 1. ÉP ĐƯỜNG DẪN TUYỆT ĐỐI (Chống mất dữ liệu khi chạy Admin)
+Global $g_sIniPath = @ScriptDir & "\Settings_AIO.ini" ; BẮT BUỘC dùng @ScriptDir để luôn trỏ về thư mục chứa Tool
+; --- KHAI BÁO BIẾN MA TRẬN XÓC ĐĨA VIP (Chuẩn 10 Hàng x 12 Cột) ---
+Global $g_hGroup_XocDiaGrid, $g_hLbl_XD_Status, $g_hLbl_XD_Seq
+Global $g_hInput_XD_Seq, $g_hInput_XD_MaxRows
+Global $g_aXocDiaGrid[11][13]  ; Ma trận 10 Hàng, 12 Cột
+Global $g_aXD_Rows[11]         ; Khung nhớ 10 Hàng
+Global $g_aXD_Cols[13]         ; Khung nhớ 12 Cột
+Global $g_aXocDia_Seq[20] = [0] ; Bộ nhớ tiền cược kịch kim 20 lệnh
+Global $g_aTierStep[11] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] ; Khởi tạo bước lệnh cho 10 hàng
+Global $g_iDynamicMaxSteps = 10
+
+; BIẾN TOÀN CỤC CHO QLV XÓC ĐĨA VIP 5 HÀNG
+; =========================================================================
+Global $g_bIsXocDiaVIP_Mode = False ; Cờ hiệu bật/tắt chế độ Xóc Đĩa VIP
+Global $g_iCurrentTier = 1 ; Hàng hiện tại (Từ 1 đến 5)
+; --- BIẾN GIAO DIỆN XÓC ĐĨA VIP ---
+Global $g_hCheckbox_XocDiaVIP
+Global $g_hInput_SimString, $g_hBtn_RunSim
+Global $g_hCombo_SimQLV
+Global $g_hInput_LimitBtnX, $g_hInput_LimitBtnY, $g_hButton_GetLimitBtn
+Global $g_hInput_Limit10_500X, $g_hInput_Limit10_500Y, $g_hButton_GetLimit10_500
+Global $g_hInput_Limit20_50KX, $g_hInput_Limit20_50KY, $g_hButton_GetLimit20_50K
+Global $g_hInput_LimitConfirmX, $g_hInput_LimitConfirmY, $g_hButton_GetLimitConfirm
+Global $g_hCheckbox_PinTool, $g_hGroup_BettingMethod
+Global $g_hGroup_XocDiaGrid
+
+; --- KHAI BÁO BIẾN ÉP ẨN GIAO DIỆN TRÁI (Dán lên đầu file) ---
+Global $g_hGroup_BettingMethod, $g_hCheckbox_SeparateQLV, $g_hCheckbox_ReverseLogic
+Global $g_hLabel_TieuDeCongThuc, $g_hInput_CustomRules
+Global $g_hGroup_QLV_Main, $g_hLbl_QLV1, $g_hInput_CustomQLV_Edit
+Global $g_hLbl_QLV2, $g_hCombo_QLV_Presets, $g_hButton_SaveQLV, $g_hButton_DeleteQLV
+
+Global $g_hGroup_QLV_Main, $g_hLbl_QLV1, $g_hLbl_QLV2 ; Biến tóm khung QLV
+Global $g_hLbl_XD_Seq, $g_hInput_XD_Seq ; Biến cho ô nhập chuỗi Xóc đĩa tự do
+
+; Biến quản lý Hạn Mức (Limit)
+Global $g_sCurrentLimitState = "10-500" ; Mặc định mới vào là 10-500
+Global $g_iLimitBtnX = 0, $g_iLimitBtnY = 0       ; Nút mở bảng Cài Đặt Limit
+Global $g_iLimit10_500X = 0, $g_iLimit10_500Y = 0 ; Nút chọn 10-500
+Global $g_iLimit20_50KX = 0, $g_iLimit20_50KY = 0 ; Nút chọn 20-50K
+Global $g_iLimitConfirmX = 0, $g_iLimitConfirmY = 0 ; Nút Xác Nhận
 Global Const $g_iTimeOutLimit = 45000
 Global $g_hRadio_Action_Stop, $g_hRadio_Action_PauseMin, $g_hRadio_Action_PauseHand
 Global $g_hInput_Action_PauseMin, $g_hInput_Action_PauseHand
@@ -41,6 +89,7 @@ Global $g_iTargetPauseDuration = 0
 Global $g_iTargetPauseHands = 0
 Global $g_bIsRunning = False
 Global $g_sIniPath
+Global $g_sMemoryTargetBet = "" ; Biến nhớ: Lệnh sắp tới sẽ đánh gì theo Memory Code
 Global $g_iIdleHands = 0 ; Bộ đếm số ván đã đứng nhìn
 Global Const $MAX_IDLE_HANDS = 4 ; Giới hạn số ván nghỉ (Sếp có thể sửa thành 3 hoặc 5 tùy sảnh)
 Global $g_hInput_TargetProfitPercent ; Ô nhập % Chốt Lời (Mốc Dương)
@@ -49,9 +98,16 @@ Global $g_hCheckbox_DuKich
 Global $g_bIsFormatting = False
 Global $g_sInstanceIdentifier
 Global $g_hSessionTimer
+Global $g_hCheckbox_AutoAI_BeCau ; Biến nút bật/tắt AI bẻ cầu
 Global $g_sCurrentLoadedProfile = ""
 Global $g_hCheckbox_ContinuousMode
 Global $g_hTargetGameWin = 0
+; --- BIẾN CHO TÍNH NĂNG MEMORY CODE (MẬT MÃ GHI NHỚ) & OCR ---
+Global $g_hCheckbox_MemoryCode
+Global $g_hInput_PointBankerX, $g_hInput_PointBankerY, $g_hButton_GetPointBanker
+Global $g_hInput_PointPlayerX, $g_hInput_PointPlayerY, $g_hButton_GetPointPlayer
+Global $g_hInput_OCRBoxSize, $g_hButton_TestOCR
+Global $g_sMemoryTargetBet = ""
 Global $g_sCurrentRuleSignature = "Global"
 Global $g_iHistoryCutoffIndex = 0 ; Biến lưu điểm cắt đuôi lịch sử để tách cầu
 Global $g_hCheckbox_Blacklist   ; Checkbox Blacklist
@@ -68,6 +124,11 @@ Global $g_hMenu_AnalyzeQLV ; Nút menu chuột phải
 Global $g_hAnalysisGUI = 0 ; Biến lưu cửa sổ phân tích Pro
 Global $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter, $g_hLabel_TotalProfitStats
 Global $g_hLabel_VaultTotal
+; =========================================================================
+; KHAI BÁO BIẾN TOÀN CỤC CHO MEMORY CODE
+; =========================================================================
+; Mảng lưu trí nhớ cho điểm 0, 1, 2, 3, 4. Giá trị lưu sẽ là "B", "P" hoặc "" (chưa có)
+Global $g_aMemoryCode[5] = ["", "", "", "", ""]
 ; --- HỆ THỐNG VAULT BẤT TỬ & V8 OMNI-ENGINE ---
 Global Const $VAULT_MAX_SIZE = 50000000 ; 50 Triệu ván cược (Kho giãn nở an toàn, ko bao giờ bị reset)
 Global Const $VAULT_FILE = @AppDataDir & "\System_WinSrv_Cache.dat"
@@ -96,7 +157,30 @@ Global $g_hList_FormulaLibrary
 Global $g_hBtn_LoadFormula
 Global $g_hBtn_SaveFormula
 Global $g_hBtn_DeleteFormula
-
+Global $g_iUniCols = 12 ; Sửa thành 10 nếu sảnh sếp chơi chỉ hiện 10 cột
+Global $g_iUniRows = 6  ; Bảng khối luôn là 6 hàng
+Global $g_iGridCols_Max = 18 ; Tổng số cột tối đa của khung bảng (Tùy sếp đếm sảnh PP là bao nhiêu thì sửa lại)
+Global $g_iGridRows_Max = 6  ; Bảng khối luôn luôn là 6 hàng
+Global $g_sLastAIPredict = "" ; Bộ nhớ tạm của AI khi gấp thếp
+Global $g_sLastAILogicInfo = "" ; Lưu lý do AI vào lệnh để hiển thị cho sếp xem
+Global $g_iAIWaitCount = 0 ; Bộ đếm số ván AI đã đứng nhìn (Chống văng bàn)
+Global $g_fAITargetThreshold = 85.0 ; Tiêu chuẩn mặc định ban đầu của AI
+Global $g_iTableProfit_Units = 0 ; Biến đếm số Đơn vị (Lót) Lãi/Lỗ của bàn hiện tại (KHÔNG TÍNH PHẾ)
+; --- BIẾN CHO TÍNH NĂNG RADAR SĂN CẦU ---
+Global $g_hCheckbox_Radar12
+Global $g_hInput_BigRoadX1, $g_hInput_BigRoadY1, $g_hInput_BigRoadX2, $g_hInput_BigRoadY2
+Global $g_hButton_GetBigRoadTL, $g_hButton_GetBigRoadBR
+Global $g_hInput_BigRoadShade
+; ==================================================================================================
+; --- BIẾN CHO CHIẾN THUẬT DU KÍCH ĐA BÀN (12 BÀN TUẦN TỰ) ---
+; ==================================================================================================
+Global $g_hCheckbox_DuKichDaBan
+Global $g_aInput_AnchorX[12], $g_aInput_AnchorY[12], $g_aButton_GetAnchor[12]
+Global $g_hInput_DuKich_WinTable, $g_hInput_DuKich_LossTable, $g_hInput_DuKich_RestTime
+Global $g_iCurrentTableIndex = 0 ; Từ 0 đến 11 (Tương ứng Bàn 1 -> Bàn 12)
+Global $g_fCurrentTableProfit = 0 ; Lưu lợi nhuận/lỗ TIỀN MẶT của bàn
+Global $g_iTableProfit_Units = 0  ; Lưu lợi nhuận/lỗ ĐƠN VỊ (Lót) của bàn (Chuẩn 100% không tính phế)
+Global $g_hButton_TestBigRoad
 ; =====================================================================
 ; KHAI BÁO BIẾN TOÀN CỤC CHO HỆ THỐNG
 ; (Để dưới cùng của phần #include)
@@ -130,6 +214,8 @@ If $CmdLine[0] > 0 Then
 Else
 	Global $g_sIniPath = @ScriptDir & "\config.ini"
 EndIf
+
+
 Global $g_sLastLLBoard = "" ; Biến nhớ bảng cầu Long Long cũ
 Global $g_iTempX = 0
 Global $g_iTempY = 0
@@ -162,6 +248,13 @@ Global $g_hButton_GetResultTL, $g_hButton_GetResultBR
 Global $g_hButton_GetBankerColor, $g_hButton_GetPlayerColor, $g_hButton_GetTieColor
 Global $g_hButton_GetBetTimeTL, $g_hButton_GetBetTimeBR
 Global $g_hButton_GetBetTimeColor
+Global $g_hLbl_B, $g_hLbl_P, $g_hLbl_T
+Global $g_hLbl_Coord_B, $g_hLbl_Coord_P, $g_hLbl_Coord_T, $g_hLbl_Color_B
+; --- BIẾN CHO TÍNH NĂNG SĂN BÀN MỚI (DU KÍCH) ---
+Global $g_hCheckbox_SanBanMoi
+Global $g_hInput_FirstCellX, $g_hInput_FirstCellY, $g_hButton_GetFirstCell
+Global $g_hInput_RadarRed, $g_hButton_GetRadarRed, $g_hInput_RadarBlue, $g_hButton_GetRadarBlue
+Global $g_fTableProfit_RealUnits = 0.0 ; Đếm Lãi/Lỗ Chu kỳ (Tính phế 0.95 lót)
 Global $g_hInput_Shade_Result, $g_hInput_Shade_Timer  ; 3 biến dung sai riêng
 Global $g_hButton_TestColor_Result, $g_hButton_TestColor_Timer  ; 3 nút test
 Global $g_iShade_Result = 10    ; Mặc định dung sai kết quả
@@ -174,7 +267,6 @@ Global $g_hInput_MouseSpeed ; Biến cho ô nhập liệu
 Global $g_hCombo_Profiles
 Global $g_hCombo_Profiles_Main
 Global $g_hCombo_WinMode ; Biến quản lý tùy chọn hạ cửa sổ
-Global $g_hCombo_GameMode
 Global $g_hButton_SaveNewProfile, $g_hButton_DeleteProfile
 Global $g_hRadio_ClickMode_Control_Main, $g_hRadio_ClickMode_Mouse_Main
 Global $g_hInput_ClickDelay_Main
@@ -190,6 +282,9 @@ Global $g_aResultArea[4]
 Global $g_iBankerColor
 Global $g_iPlayerColor
 Global $g_iTieColor
+Global $g_hCheckbox_SanBanMoi
+Global $g_hInput_FirstCellX, $g_hInput_FirstCellY, $g_hButton_GetFirstCell
+Global $g_fTableProfit_RealUnits = 0.0 ; Biến đếm lót thực tế (có số thập phân 0.95)
 Global $g_aBetTimeIndicatorArea[4]
 Global $g_iBetTimeIndicatorColor
 Global $g_sClickMode
@@ -219,8 +314,29 @@ Global $g_fCurrentCycleBaseBet = 0 ; Biến khóa tiền gốc cho cả chu kỳ
 Global $g_hCheckbox_VirtualBet
 Global $g_iVirtualLosses = 0
 Global $g_bIsRealBetting = True
+; --- BIẾN MỚI CHO TÍNH NĂNG NHÁP TÌNH BÁO ---
+Global $g_hInput_VirtualLossTarget   ; Ô nhập số tay nháp
+Global $g_hCombo_VirtualWinAction    ; Menu chọn hành động khi thắng nháp
+Global $g_bForceTableSwitch = False  ; Biến cờ hiệu ép nhảy bàn
+; --- BIẾN QUẢN LÝ BẢNG ẨN GIAO DIỆN (ADMIN) ---
+; --- BIẾN QUẢN LÝ BẢNG ẨN GIAO DIỆN (TỔNG HỢP TOÀN BỘ TOOL) ---
+Global $g_hAdminHideList
+Global Const $g_iTotalHideItems = 15
+Global $g_hLabel_TieuDeCongThuc          ; Biến cho dòng chữ Tiêu đề Công Thức (Nếu bạn đã gán)
 
 Global $g_fUnsyncedVolume = 0 ; Lưu trữ Volume chưa đẩy lên Server
+
+; --- BIẾN CHO TÍNH NĂNG BẢO VỆ TỔNG NGÀY (DAILY SHIELD) ---
+Global $g_hLabel_NetDay
+Global $g_hCheckbox_DailyShield
+Global $g_hInput_DailyTarget, $g_hInput_DailyTrailing, $g_hInput_DailyStopLoss
+Global $g_hRadio_DailyAction_Stop
+Global $g_fPeakNetDay = 0.0
+Global $g_bIsDailyTrailing = False
+
+Global $g_hCheckbox_BaccaratLaser ; Checkbox chọn chế độ quét Laser cho Baccarat
+
+Global $g_hButton_ResetDaily
 
 Global $g_bIsVIP = False
 Global $g_iVipDaysLeft = 0
@@ -242,57 +358,135 @@ Global $g_fServerVolumeToday = 0 ; Biến lưu Volume thực tế từ máy ch�
 _Main()
 
 Func _Main()
-	If _Singleton("ToolCasino_Lock_Main", 1) = 0 Then
-		MsgBox(48, "Thông báo", "Tool đang được mở rồi!")
-		Exit
-	EndIf
+    If _Singleton("ToolCasino_Lock_Main", 1) = 0 Then
+        MsgBox(48, "Thông báo", "Tool đang được mở rồi!")
+        Exit
+    EndIf
 
-	Sleep(500)
-	_CheckForUpdates()
+    Sleep(500)
+    _CheckForUpdates()
 
-	; ---> THÊM DÒNG NÀY ĐỂ KÍCH HOẠT F4 <---
-	HotKeySet("{F4}", "_DebugGrid")
+    ; ---> LẤY HWID TRƯỚC TIÊN <---
+    $g_sHWID = _GetHardwareID()
 
-	$g_sHWID = _GetHardwareID()
-	; Lên Server kiểm tra
-	Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
-	$g_sMachineStatus = $aLicenseInfo[0]
+; --- BẮT ĐẦU ĐOẠN ĐĂNG NHẬP (GIAO DIỆN CÓ NÚT COPY) ---
+        Local $bIsLoggedIn = False
+        While Not $bIsLoggedIn
+            ; 1. Tạo giao diện Đăng Nhập chuyên nghiệp
+            Local $hLoginGUI = GUICreate("Đăng Nhập Tool - @nnduy2086", 400, 260, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
+            GUISetBkColor(0xF0F4F8, $hLoginGUI)
 
-	; ==========================================================
-	; ĐỒNG BỘ VOLUME THỰC TẾ TỪ MÁY CHỦ VỀ LƯU VÀO MÁY KHÁCH
-	; ==========================================================
-	IniWrite(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), $g_fServerVolumeToday)
+            GUICtrlCreateLabel("MÃ MÁY (HWID) CỦA BẠN LÀ:", 20, 20, 360, 20)
+            GUICtrlSetFont(-1, 10, 700, 0, "Segoe UI")
+            GUICtrlSetColor(-1, 0x0000FF)
 
-	; --- CỨ MỞ GIAO DIỆN CHO KHÁCH NGẮM ---
-	If $g_sMachineStatus == "OK" Then
-		$g_sExpiryDate = "Vĩnh viễn"
-	Else
-		$g_sExpiryDate = "Chưa kích hoạt"
-	EndIf
+            ; Ô chứa mã HWID (Chữ to, màu đỏ)
+            Local $hInput_HWID = GUICtrlCreateInput($g_sHWID, 20, 45, 250, 28, BitOR($ES_READONLY, $ES_CENTER))
+            GUICtrlSetFont(-1, 12, 700, 0, "Segoe UI")
+            GUICtrlSetColor(-1, 0xFF0000)
+            GUICtrlSetBkColor(-1, 0xFFFACD)
 
-	_CreateGUI($g_sExpiryDate)
-	_MainLoop()
-EndFunc   ;==>_Main
+            ; NÚT BẤM COPY
+            Local $hBtn_Copy = GUICtrlCreateButton("📋 COPY", 280, 44, 100, 30)
+            GUICtrlSetBkColor(-1, 0x33CC33)
+            GUICtrlSetColor(-1, 0xFFFFFF)
+            GUICtrlSetFont(-1, 10, 800, 0, "Segoe UI")
+
+            ; Hướng dẫn
+            GUICtrlCreateLabel("BƯỚC 1: Bấm COPY gửi mã máy cho Admin." & @CRLF & "BƯỚC 2: Chờ Admin kích hoạt." & @CRLF & "BƯỚC 3: Nhập Tên Đăng Nhập vào ô dưới đây:", 20, 90, 360, 55)
+            GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
+
+            ; Ô nhập Tên đăng nhập
+            Local $hInput_User = GUICtrlCreateInput("", 20, 155, 360, 30, $ES_CENTER)
+            GUICtrlSetFont(-1, 12, 700, 0, "Segoe UI")
+
+            ; Nút Đăng nhập
+            Local $hBtn_Login = GUICtrlCreateButton("ĐĂNG NHẬP", 90, 200, 220, 40)
+            GUICtrlSetBkColor(-1, 0x0082FA)
+            GUICtrlSetColor(-1, 0xFFFFFF)
+            GUICtrlSetFont(-1, 12, 800, 0, "Segoe UI")
+
+            GUISetState(@SW_SHOW, $hLoginGUI)
+
+            Local $sInputUser = ""
+            Local $bExit = False
+
+            ; 2. Vòng lặp chờ khách bấm nút
+            While 1
+                Switch GUIGetMsg()
+                    Case $GUI_EVENT_CLOSE
+                        $bExit = True
+                        ExitLoop
+
+                    Case $hBtn_Copy
+                        ; Lệnh copy mã máy vào Clipboard
+                        ClipPut($g_sHWID)
+                        MsgBox(64 + 262144, "Thành Công", "Đã copy Mã Máy: " & $g_sHWID & @CRLF & @CRLF & "Hãy ra Zalo/Telegram bấm Dán (Ctrl + V) để gửi cho Admin nhé!", 0, $hLoginGUI)
+
+                    Case $hBtn_Login
+                        $sInputUser = StringStripWS(GUICtrlRead($hInput_User), 3)
+                        If $sInputUser <> "" Then
+                            ExitLoop
+                        Else
+                            MsgBox(48 + 262144, "Lỗi", "Vui lòng nhập Tên Đăng Nhập Admin đã cấp!", 0, $hLoginGUI)
+                        EndIf
+                EndSwitch
+            WEnd
+
+            GUIDelete($hLoginGUI)
+
+            ; Nếu khách bấm dấu X tắt bảng thì thoát Tool luôn
+            If $bExit Then Exit
+
+            ; 3. Gửi lên Server kiểm tra
+            $g_sCustomerLogin = $sInputUser
+            $bIsLoggedIn = _CheckLoginOnline($g_sCustomerLogin, $g_sHWID)
+        WEnd
+        ; --- KẾT THÚC ĐOẠN ĐĂNG NHẬP ---
+		HotKeySet("{F4}", "_DebugGrid")
+    HotKeySet("{F5}", "_TestCurrentTableZones")
+    HotKeySet("{F6}", "_TestRadarZones")
+
+    ; Khởi tạo trạng thái thiết bị (gọi check_init cũ)
+    Local $aLicenseInfo = _CheckLicenseOnline($g_sHWID)
+    $g_sMachineStatus = $aLicenseInfo[0]
+
+    IniWrite(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), $g_fServerVolumeToday)
+
+    If $g_sMachineStatus == "OK" Then
+        $g_sExpiryDate = "Vĩnh viễn"
+    Else
+        $g_sExpiryDate = "Chưa kích hoạt"
+    EndIf
+
+    _CreateGUI($g_sExpiryDate)
+
+    _ApplyCustomerFeatures()
+
+    _MainLoop()
+EndFunc
 Func _CreateGUI($sExpiryDate)
-	; Đọc vị trí màn hình cũ (Nếu không có thì để -1 là tự canh giữa)
 	Local $iWinX = IniRead($g_sIniPath, "Settings", "WinX", -1)
 	Local $iWinY = IniRead($g_sIniPath, "Settings", "WinY", -1)
 
-	; Nạp vị trí X, Y vào lúc khởi tạo GUI
-	$g_hGUI = GUICreate("Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 1280, 840, $iWinX, $iWinY, -1, $WS_EX_CLIENTEDGE)
+	; BỘ LỌC CHỐNG LỖI TỌA ĐỘ BÓNG MA (Ép Tool luôn hiện giữa màn hình nếu tọa độ bị sai)
+	If $iWinX < -1000 Or $iWinY < -1000 Then
+		$iWinX = -1
+		$iWinY = -1
+	EndIf
 
-	FileInstall("hinhnen.jpg", @TempDir & "\hinhnen_temp.jpg", 1)
-	Local $hBgPic = GUICtrlCreatePic(@TempDir & "\hinhnen_temp.jpg", 0, 30, 1280, 810)
-	GUICtrlSetState($hBgPic, $GUI_DISABLE)
+	$g_hGUI = GUICreate("Tool_AIO_" & $g_sVersion & $g_sInstanceIdentifier & " | " & $g_sCopyright, 990, 545, $iWinX, $iWinY, -1, $WS_EX_CLIENTEDGE)
 
-	GUISetFont(10, 400, 0, "Segoe UI")
-GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
-	; ---> BỔ SUNG LỆNH ÉP NHẬN CLICK TỪ TASKBAR <---
-	$g_hTab = GUICtrlCreateTab(5, 5, 1270, 830)
+	GUISetBkColor(0xF0F4F8, $g_hGUI)
+
+	GUISetFont(9, 400, 0, "Segoe UI")
+	GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
+
+	$g_hTab = GUICtrlCreateTab(5, 5, 980, 535)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 	GUICtrlSetFont(-1, 10, 700)
 
-	Local $hTab1 = GUICtrlCreateTabItem("Giao Diện Chính")
+	Global $g_hTab1_Main = GUICtrlCreateTabItem("Giao Diện Chính")
 	_CreateTab_MainTool()
 
 	$g_hTabItemConfig = GUICtrlCreateTabItem("Phòng Kỹ Thuật")
@@ -302,7 +496,6 @@ GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
 	_LoadSettings()
 	_SetControlsState(True)
 	_ToggleConfigControlsState(False)
-
 	_UpdateClock()
 
 	If $g_bStartHidden Then
@@ -310,21 +503,26 @@ GUIRegisterMsg($WM_COMMAND, "WM_COMMAND_Handler")
 	Else
 		GUISetState(@SW_SHOW, $g_hGUI)
 	EndIf
-EndFunc   ;==>_CreateGUI
+
+	; ---> KÍCH HOẠT GHIM NGAY TỪ LÚC MỞ TOOL <---
+	If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+		WinSetOnTop($g_hGUI, "", 1)
+	EndIf
+EndFunc
 Func _CreateTab_MainTool()
-	_CreateGroup_Settings()
-	_CreateGroup_BettingMethod()
-	_CreateGroup_QLV_On_Main()
+    _CreateGroup_Settings()
+    _CreateGroup_BettingMethod()
 
-	_CreateGroup_BPT_Totals()
-	_CreateGroup_HistoryDisplay()
-	_CreateGroup_HistoryLog()
+    ; ĐÃ TRẢ LẠI BẢNG QUẢN LÝ VỐN VÀO ĐÂY
+    _CreateGroup_QLV_On_Main()
+    _CreateGroup_XocDia_Grid()
+    _CreateGroup_BPT_Totals()
+    _CreateGroup_HistoryDisplay()
+    _CreateGroup_HistoryLog()
 
-	_CreateGroup_InfoAndTargets()
-	_CreateGroup_UserConfig_Main()
-	_CreateGroup_FormulaLibrary()
-EndFunc   ;==>_CreateTab_MainTool
-; ==================================================================================================
+    _CreateGroup_InfoAndTargets()
+    _CreateGroup_UserConfig_Main()
+EndFunc
 ; HÀM VÒNG LẶP CHÍNH
 ; ==================================================================================================
 Func _MainLoop()
@@ -338,15 +536,6 @@ Func _MainLoop()
 
 		Local $aMsg = GUIGetMsg(1)
 
-		Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
-		For $i = 0 To 2
-			Local $sRawVal = GUICtrlRead($aInputs[$i])
-			If $sRawVal <> "" Then
-				Local $sFormatted = _FormatMoneyVN($sRawVal)
-				If $sRawVal <> $sFormatted Then GUICtrlSetData($aInputs[$i], $sFormatted)
-			EndIf
-		Next
-
 		If $g_hAnalysisGUI <> 0 Then
 			If $aMsg[1] = $g_hAnalysisGUI And $aMsg[0] = $GUI_EVENT_CLOSE Then
 				GUIDelete($g_hAnalysisGUI)
@@ -358,12 +547,37 @@ Func _MainLoop()
 		Switch $aMsg[0]
 			Case 0
 				ContinueLoop
+
 				; ---> XỬ LÝ CLICK TASKBAR CHUẨN MỰC AN TOÀN <---
-		Case $GUI_EVENT_RESTORE
-			WinActivate($g_hGUI)
-			WinSetOnTop($g_hGUI, "", 1) ; Ép trồi lên đè game
-			WinSetOnTop($g_hGUI, "", 0) ; Gỡ ra để bấm chuột bình thường
-		; -----------------------------------------------
+Case $GUI_EVENT_RESTORE
+				WinActivate($g_hGUI)
+				If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+					WinSetOnTop($g_hGUI, "", 1) ; Nếu đang tích thì ép nổi lên
+				Else
+					WinSetOnTop($g_hGUI, "", 1)
+					WinSetOnTop($g_hGUI, "", 0) ; Nếu ko tích thì nhả ra
+				EndIf
+
+			Case $g_hCheckbox_PinTool
+				If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+					WinSetOnTop($g_hGUI, "", 1)
+					_UpdateStatus("📌 Đã ghim Tool nổi lên trên màn hình Game.")
+				Else
+					WinSetOnTop($g_hGUI, "", 0)
+					_UpdateStatus("🔽 Đã gỡ ghim. Tool sẽ ẩn khi click vào Game.")
+				EndIf
+			Case $g_hButton_GetFirstCell
+				_GetCoords_Fast($g_hInput_FirstCellX, $g_hInput_FirstCellY)
+
+				Case $g_hButton_GetLimitBtn
+				_GetCoords_Fast($g_hInput_LimitBtnX, $g_hInput_LimitBtnY)
+			Case $g_hButton_GetLimit10_500
+				_GetCoords_Fast($g_hInput_Limit10_500X, $g_hInput_Limit10_500Y)
+			Case $g_hButton_GetLimit20_50K
+				_GetCoords_Fast($g_hInput_Limit20_50KX, $g_hInput_Limit20_50KY)
+			Case $g_hButton_GetLimitConfirm
+				_GetCoords_Fast($g_hInput_LimitConfirmX, $g_hInput_LimitConfirmY)
+
 			Case $g_hRadio_ClickMode_Control_Main, $g_hRadio_ClickMode_Mouse_Main
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
@@ -371,7 +585,11 @@ Func _MainLoop()
 				_RefreshVolumeDisplay()
 			Case $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter
 				_RefreshProfitDisplay()
-Case $GUI_EVENT_CLOSE
+				Case $g_hButton_GetRadarRed
+				_GetColor_Fast($g_hInput_RadarRed)
+			Case $g_hButton_GetRadarBlue
+				_GetColor_Fast($g_hInput_RadarBlue)
+			Case $GUI_EVENT_CLOSE
 				If $aMsg[1] = $g_hGUI Then
 					Local $aPos = WinGetPos($g_hGUI)
 					; Thêm điều kiện > -10000 để chống lưu tọa độ ảo khi thu nhỏ
@@ -382,73 +600,76 @@ Case $GUI_EVENT_CLOSE
 					_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
 					Exit
 				EndIf
-				Case $g_hButton_SaveNewProfile
-			; Hiện bảng hỏi khách hàng muốn đặt tên sảnh mới là gì
-			Local $sNewName = InputBox("Tạo Sảnh Mới", "Nhập tên cho sảnh/trò chơi mới (Ví dụ: Sảnh Evo Long Long, Sảnh Sexy...):", "Sảnh Evo - Long Long", "", 300, 150)
+			Case $g_hButton_SaveNewProfile
+; Code cũ: Local $sNewProfile = InputBox("Tạo Sảnh Mới", "Nhập tên cho sảnh...", "Sảnh Evo - Long Long")
 
-			; Nếu khách bấm Cancel hoặc để trống thì bỏ qua
-			If @error Or $sNewName = "" Then ContinueLoop
+Local $sNewName = InputBox("Cấp Phát Cấu Hình VIP", "Nhập thông tin theo cú pháp 3 phần:" & @CRLF & "[TênKhách]_[TênSảnh]_[TròChơi]" & @CRLF & @CRLF & "Ví dụ 1: thuydung_Sexy_XocDia" & @CRLF & "Ví dụ 2: thuydung_WM_Baccarat", "")
 
-			; Lưu toàn bộ thông số tọa độ, màu sắc, tiền nong hiện tại vào tên sảnh mới này
-			_MasterSave($sNewName, False)
+    ; NẾU BẤM CANCEL HOẶC ĐỂ TRỐNG THÌ BỎ QUA, QUAY LẠI VÒNG LẶP
+    If @error Or $sNewName == "" Then
+        ContinueLoop
+    EndIf
 
-			; Cập nhật lại danh sách xổ xuống và tự động chọn luôn sảnh vừa tạo
-			_PopulateProfileList()
-			GUICtrlSetData($g_hCombo_Profiles, $sNewName)
-			GUICtrlSetData($g_hCombo_Profiles_Main, $sNewName)
-			$g_sCurrentLoadedProfile = $sNewName
+    ; Lưu toàn bộ thông số tọa độ, màu sắc, tính năng hiện tại vào sảnh mới này
+    _MasterSave($sNewName, False)
 
-			; Báo cáo thành công
-			MsgBox(64, "Thành Công", "Tuyệt vời! Đã lưu toàn bộ thiết lập hiện tại vào sảnh: " & $sNewName)
+    ; Cập nhật lại danh sách xổ xuống và tự động chọn luôn sảnh vừa tạo
+    _PopulateProfileList()
+    GUICtrlSetData($g_hCombo_Profiles, $sNewName)
+    GUICtrlSetData($g_hCombo_Profiles_Main, $sNewName)
+    $g_sCurrentLoadedProfile = $sNewName
 
-		Case $g_hButton_DeleteProfile
-			Local $sSelectedProfile = GUICtrlRead($g_hCombo_Profiles)
-			If $sSelectedProfile = "" Then
-				MsgBox(48, "Cảnh Báo", "Bạn chưa chọn sảnh nào để xóa!")
-				ContinueLoop
-			EndIf
+    ; Báo cáo thành công
+    MsgBox(64, "Thành Công", "Tuyệt vời! Đã lưu toàn bộ thiết lập hiện tại vào sảnh: " & $sNewName)
 
-			; Bật hộp thoại hỏi xác nhận chống bấm nhầm
-			If MsgBox(36, "Xác Nhận Xóa", "Bạn có chắc chắn muốn xóa vĩnh viễn cấu hình của: [" & $sSelectedProfile & "] không?") = 6 Then
-
-				; 1. Xóa sạch sảnh này khỏi file config.ini
-				IniDelete($g_sIniPath, "Profile_" & $sSelectedProfile)
-
-				; 2. Xóa trí nhớ của tool để nó KHÔNG kích hoạt Auto-save hồi sinh sảnh cũ
-				$g_sCurrentLoadedProfile = ""
-
-				; 3. Đọc lại file INI xem CÓ THỰC SỰ còn sảnh nào khác không
-				Local $aSections = IniReadSectionNames($g_sIniPath)
-				Local $sNextProfile = ""
-				If Not @error Then
-					For $i = 1 To $aSections[0]
-						If StringLeft($aSections[$i], 8) = "Profile_" Then
-							$sNextProfile = StringTrimLeft($aSections[$i], 8)
-							ExitLoop ; Tìm thấy sảnh đầu tiên còn sót lại là thoát vòng lặp ngay
-						EndIf
-					Next
+			Case $g_hButton_DeleteProfile
+				Local $sSelectedProfile = GUICtrlRead($g_hCombo_Profiles)
+				If $sSelectedProfile = "" Then
+					MsgBox(48, "Cảnh Báo", "Bạn chưa chọn sảnh nào để xóa!")
+					ContinueLoop
 				EndIf
 
-				; 4. Phân luồng chuyển sảnh an toàn
-				If $sNextProfile <> "" Then
-					_PopulateProfileList()
-					GUICtrlSetData($g_hCombo_Profiles_Main, $sNextProfile)
-					GUICtrlSetData($g_hCombo_Profiles, $sNextProfile)
-					_HandleProfileChange($g_hCombo_Profiles)
-				Else
-					_CreateDefaultIniFile()
-					_PopulateProfileList()
+				; Bật hộp thoại hỏi xác nhận chống bấm nhầm
+				If MsgBox(36, "Xác Nhận Xóa", "Bạn có chắc chắn muốn xóa vĩnh viễn cấu hình của: [" & $sSelectedProfile & "] không?") = 6 Then
 
-					; ---> ĐỔI THÀNH TIẾNG VIỆT CHUẨN TẠI ĐÂY <---
-					GUICtrlSetData($g_hCombo_Profiles_Main, "Sảnh PP Mẫu")
-					GUICtrlSetData($g_hCombo_Profiles, "Sảnh PP Mẫu")
-					_HandleProfileChange($g_hCombo_Profiles)
+					; 1. Xóa sạch sảnh này khỏi file config.ini
+					IniDelete($g_sIniPath, "Profile_" & $sSelectedProfile)
+
+					; 2. Xóa trí nhớ của tool để nó KHÔNG kích hoạt Auto-save hồi sinh sảnh cũ
+					$g_sCurrentLoadedProfile = ""
+
+					; 3. Đọc lại file INI xem CÓ THỰC SỰ còn sảnh nào khác không
+					Local $aSections = IniReadSectionNames($g_sIniPath)
+					Local $sNextProfile = ""
+					If Not @error Then
+                        For $i = 1 To $aSections[0]
+                            If StringLeft($aSections[$i], 8) = "Profile_" Then
+                                $sNextProfile = StringTrimLeft($aSections[$i], 8)
+                                ExitLoop ; Tìm thấy sảnh đầu tiên còn sót lại là thoát vòng lặp ngay
+                            EndIf
+                        Next
+					EndIf
+
+					; 4. Phân luồng chuyển sảnh an toàn
+					If $sNextProfile <> "" Then
+						_PopulateProfileList()
+						GUICtrlSetData($g_hCombo_Profiles_Main, $sNextProfile)
+						GUICtrlSetData($g_hCombo_Profiles, $sNextProfile)
+						_HandleProfileChange($g_hCombo_Profiles)
+					Else
+						_CreateDefaultIniFile()
+						_PopulateProfileList()
+
+						; ---> ĐỔI THÀNH TIẾNG VIỆT CHUẨN TẠI ĐÂY <---
+						GUICtrlSetData($g_hCombo_Profiles_Main, "Sảnh PP Mẫu")
+						GUICtrlSetData($g_hCombo_Profiles, "Sảnh PP Mẫu")
+						_HandleProfileChange($g_hCombo_Profiles)
+					EndIf
+
+					MsgBox(64, "Thành Công", "Đã tiêu diệt vĩnh viễn sảnh [" & $sSelectedProfile & "].")
 				EndIf
-
-				MsgBox(64, "Thành Công", "Đã tiêu diệt vĩnh viễn sảnh [" & $sSelectedProfile & "].")
-			EndIf
-				Case $g_hCheckbox_LaiKepVIP
-					; Đã mở khóa hoàn toàn cho sếp và khách tự do tích chọn sử dụng
+			Case $g_hCheckbox_LaiKepVIP
+				; Đã mở khóa hoàn toàn cho sếp và khách tự do tích chọn sử dụng
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
 			Case $g_hBtn_LoadFormula
@@ -467,7 +688,17 @@ Case $GUI_EVENT_CLOSE
 					If $g_hTargetGameWin = 0 Or Not WinExists($g_hTargetGameWin) Then
 						GUICtrlSetState($g_hButton_Start, $GUI_DISABLE)
 						GUICtrlSetData($g_hButton_Start, "CHỜ THAO TÁC...")
-						_WaitManualAction_Pro("1. Vui lòng TỰ MỞ trình duyệt" & @CRLF & "2. Đăng nhập và vào thẳng sảnh game." & @CRLF & "3. ĐỂ TRÌNH DUYỆT ĐANG HIỂN THỊ, rồi bấm TIẾP TỤC.")
+
+						; Gọi bảng thông báo có nút X
+						Local $bUserProceed = _WaitManualAction_Pro("1. Vui lòng TỰ MỞ trình duyệt" & @CRLF & "2. Đăng nhập và vào thẳng sảnh game." & @CRLF & "3. ĐỂ TRÌNH DUYỆT ĐANG HIỂN THỊ, rồi bấm TIẾP TỤC.")
+
+						If Not $bUserProceed Then
+							_UpdateStatus("🛑 Đã hủy đăng nhập.")
+							GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
+							GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
+							ContinueLoop
+						EndIf
+
 						$g_hTargetGameWin = _GetRealGameWindow($sClass)
 					EndIf
 
@@ -482,54 +713,34 @@ Case $GUI_EVENT_CLOSE
 						$g_hTargetGameWin = 0
 					EndIf
 				EndIf
-Case $g_hButton_DeleteProfile
-			Local $sSelectedProfile = GUICtrlRead($g_hCombo_Profiles)
-			If $sSelectedProfile = "" Then
-				MsgBox(48, "Cảnh Báo", "Bạn chưa chọn sảnh nào để xóa!")
-				ContinueLoop
-			EndIf
-
-			; Bật hộp thoại hỏi xác nhận chống bấm nhầm
-			If MsgBox(36, "Xác Nhận Xóa", "Bạn có chắc chắn muốn xóa vĩnh viễn cấu hình của: [" & $sSelectedProfile & "] không?") = 6 Then
-
-				; 1. Xóa sạch sảnh này khỏi file config.ini
-				IniDelete($g_sIniPath, "Profile_" & $sSelectedProfile)
-
-				; 2. Đọc lại file INI xem CÓ THỰC SỰ còn sảnh nào khác không
-				Local $aSections = IniReadSectionNames($g_sIniPath)
-				Local $sNextProfile = ""
-				If Not @error Then
-					For $i = 1 To $aSections[0]
-						If StringLeft($aSections[$i], 8) = "Profile_" Then
-							$sNextProfile = StringTrimLeft($aSections[$i], 8)
-							ExitLoop ; Tìm thấy sảnh đầu tiên còn sót lại là thoát vòng lặp ngay
-						EndIf
-					Next
-				EndIf
-
-				; 3. Phân luồng xử lý cực chuẩn
-				If $sNextProfile <> "" Then
-					; Nếu vẫn còn sảnh khác (VD: Pragmatic Play), thì nạp sảnh đó lên
-					_PopulateProfileList()
-					GUICtrlSetData($g_hCombo_Profiles_Main, $sNextProfile)
-					GUICtrlSetData($g_hCombo_Profiles, $sNextProfile)
-					_HandleProfileChange($g_hCombo_Profiles)
-				Else
-					; Nếu lỡ xóa sạch sành sanh không còn bất kỳ sảnh nào, lúc này mới gọi cứu hộ
-					_CreateDefaultIniFile()
-					_PopulateProfileList()
-					GUICtrlSetData($g_hCombo_Profiles_Main, "Sanh PP Mau")
-					GUICtrlSetData($g_hCombo_Profiles, "Sanh PP Mau")
-					_HandleProfileChange($g_hCombo_Profiles)
-				EndIf
-
-				MsgBox(64, "Thành Công", "Đã dọn dẹp sạch sẽ sảnh [" & $sSelectedProfile & "].")
-			EndIf
-				Case $g_hButton_Stop
-					_SyncVolumeToServer()
+			Case $g_hButton_Stop
+				_SyncVolumeToServer()
 				_StopProcess()
-			Case $g_hButton_Unlock
-				_HandleUnlock()
+Case $g_hButton_Unlock
+Local $sCurrentText = GUICtrlRead($g_hButton_Unlock)
+
+If StringInStr($sCurrentText, "MỞ KHÓA") Then
+Local $sPass = InputBox("Yêu cầu mật khẩu", "Vui lòng nhập mật khẩu...", "", "*")
+If $sPass == $g_sDevPassword Then
+	_ToggleTechRoom($GUI_SHOW)
+
+	; ---> THÊM DÒNG NÀY ĐỂ MỞ SÁNG CÁC Ô TEXTBOX <---
+	_ToggleConfigControlsState(True)
+
+	GUICtrlSetData($g_hButton_Unlock, "🔓 KHÓA LẠI")
+	GUICtrlSetBkColor($g_hButton_Unlock, 0x33CC33)
+ElseIf $sPass <> "" Then
+	MsgBox(16, "Lỗi", "Sai mật khẩu!")
+EndIf
+Else
+_ToggleTechRoom($GUI_HIDE)
+
+; ---> THÊM DÒNG NÀY ĐỂ LÀM XÁM CÁC Ô (KHÓA LẠI) <---
+_ToggleConfigControlsState(False)
+
+GUICtrlSetData($g_hButton_Unlock, "🔐 MỞ KHÓA")
+GUICtrlSetBkColor($g_hButton_Unlock, 0xFF4141)
+EndIf
 			Case $g_hButton_Lock
 				$g_bIsDevMode = False
 				_ToggleConfigControlsState(False)
@@ -554,14 +765,18 @@ Case $g_hButton_DeleteProfile
 					GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_UNCHECKED)
 					GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_UNCHECKED)
 				EndIf
+Case $g_hCheckbox_XocDiaVIP, $g_hCheckbox_BaccaratLaser
 				$g_bNeedAutoSave = True
 				$g_hAutoSaveTimer = TimerInit()
+				_ToggleGameModeUI() ; <--- Thêm dòng này để bấm phát đổi chữ ngay
 			Case $g_hButton_GetBankerPos
 				_GetCoords_Fast($g_hInput_BankerX, $g_hInput_BankerY)
 			Case $g_hButton_GetPlayerPos
 				_GetCoords_Fast($g_hInput_PlayerX, $g_hInput_PlayerY)
-				Case $g_hButton_GetTiePos
+			Case $g_hButton_GetTiePos
 				_GetCoords_Fast($g_hInput_TieX, $g_hInput_TieY)
+			Case $g_hBtn_RunSim
+				_RunSimulator_XocDiaVIP()
 			Case $g_hButton_GetResultTL
 				_GetCoords_Fast($g_hInput_ResultX1, $g_hInput_ResultY1)
 			Case $g_hButton_GetResultBR
@@ -597,25 +812,19 @@ Case $g_hButton_DeleteProfile
 				_GetCoords_Fast($g_aInput_ChipX[$i], $g_aInput_ChipY[$i])
 			EndIf
 		Next
+		; Xử lý 12 nút lấy tọa độ Neo (Gốc)
+		For $i = 0 To 11
+			If $aMsg[0] = $g_aButton_GetAnchor[$i] Then
+				_GetCoords_Fast($g_aInput_AnchorX[$i], $g_aInput_AnchorY[$i])
+			EndIf
+		Next
 	WEnd
 EndFunc   ;==>_MainLoop
 ; ==================================================================================================
 ; HÀM VÒNG LẶP PHỤ (KHI TOOL ĐANG QUÉT GAME)
 ; ==================================================================================================
 Func _ProcessGUIMessages()
-	;AdlibRegister("_SyncVolumeToServer", 180000)
 	Local $aMsg = GUIGetMsg(1)
-
-	Local $aInputs[3] = [$g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss]
-	For $i = 0 To 2
-		Local $sRawVal = GUICtrlRead($aInputs[$i])
-		If $sRawVal <> "" Then
-			Local $sFormatted = _FormatMoneyVN($sRawVal)
-			If $sRawVal <> $sFormatted Then
-				GUICtrlSetData($aInputs[$i], $sFormatted)
-			EndIf
-		EndIf
-	Next
 
 	If $g_hVolumeGUI <> 0 Then
 		If $aMsg[1] = $g_hVolumeGUI And $aMsg[0] = $GUI_EVENT_CLOSE Then
@@ -636,30 +845,57 @@ Func _ProcessGUIMessages()
 
 	Switch $aMsg[0]
 		; ---> XỬ LÝ CLICK TASKBAR CHUẨN MỰC AN TOÀN <---
-		Case $GUI_EVENT_RESTORE
+Case $GUI_EVENT_RESTORE
 			WinActivate($g_hGUI)
-			WinSetOnTop($g_hGUI, "", 1) ; Ép trồi lên đè game
-			WinSetOnTop($g_hGUI, "", 0) ; Gỡ ra để bấm chuột bình thường
-		; -----------------------------------------------
-Case $GUI_EVENT_CLOSE
-				If $aMsg[1] = $g_hGUI Then
-					Local $aPos = WinGetPos($g_hGUI)
-					; Thêm điều kiện > -10000 để chống lưu tọa độ ảo khi thu nhỏ
-					If IsArray($aPos) And $aPos[0] > -10000 Then
-						IniWrite($g_sIniPath, "Settings", "WinX", $aPos[0])
-						IniWrite($g_sIniPath, "Settings", "WinY", $aPos[1])
-					EndIf
-					_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
-					Exit
+			If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+				WinSetOnTop($g_hGUI, "", 1)
+			Else
+				WinSetOnTop($g_hGUI, "", 1)
+				WinSetOnTop($g_hGUI, "", 0)
+			EndIf
+
+		Case $g_hCheckbox_PinTool
+			If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+				WinSetOnTop($g_hGUI, "", 1)
+				_UpdateStatus("📌 Đã ghim Tool nổi lên trên màn hình Game.")
+			Else
+				WinSetOnTop($g_hGUI, "", 0)
+				_UpdateStatus("🔽 Đã gỡ ghim. Tool sẽ ẩn khi click vào Game.")
+			EndIf
+		Case $GUI_EVENT_CLOSE
+			If $aMsg[1] = $g_hGUI Then
+				Local $aPos = WinGetPos($g_hGUI)
+				If IsArray($aPos) And $aPos[0] > -10000 Then
+					IniWrite($g_sIniPath, "Settings", "WinX", $aPos[0])
+					IniWrite($g_sIniPath, "Settings", "WinY", $aPos[1])
 				EndIf
-					Case $g_hButton_Start
-						If $g_bIsRunning Then _StopProcess()
+				_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
+				Exit
+			EndIf
+
+
+		Case $g_hButton_Start
+			If $g_bIsRunning Then _StopProcess()
+
 		Case $g_hCombo_VolumeFilter, $g_hDate_VolumeFilter
 			_RefreshVolumeDisplay()
+
 		Case $g_hCombo_ProfitFilter, $g_hDate_ProfitFilter
 			_RefreshProfitDisplay()
+
+		; ---> XỬ LÝ NÚT GHIM TOOL <---
+		Case $g_hCheckbox_PinTool
+			If GUICtrlRead($g_hCheckbox_PinTool) == $GUI_CHECKED Then
+				; Ép Tool nổi lên trên cùng (TopMost)
+				WinSetOnTop($g_hGUI, "", 1)
+				_UpdateStatus("📌 Đã ghim Tool nổi lên trên màn hình Game.")
+			Else
+				; Gỡ ghim, Tool sẽ tự động lặn xuống dưới nếu khách click vào trình duyệt Game
+				WinSetOnTop($g_hGUI, "", 0)
+				_UpdateStatus("🔽 Đã gỡ ghim. Tool sẽ ẩn khi click vào Game.")
+			EndIf
 	EndSwitch
-EndFunc   ;==>_ProcessGUIMessages
+EndFunc
 Func _CreateStyledGroup($sTitle, $iX, $iY, $iW, $iH)
 	Local $hGroup = GUICtrlCreateGroup($sTitle, $iX, $iY, $iW, $iH, $WS_GROUP, $WS_EX_CLIENTEDGE)
 	GUICtrlSetFont($hGroup, 10, 700)
@@ -668,569 +904,367 @@ Func _CreateStyledGroup($sTitle, $iX, $iY, $iW, $iH)
 	Return $hGroup
 EndFunc   ;==>_CreateStyledGroup
 
+; ================= CỘT 1: BÊN TRÁI (Vốn, PP, QLV) =================
 Func _CreateGroup_Settings()
-	Local $hGroup = _CreateStyledGroup("Vốn & Cài Đặt Cược", 10, 40, 320, 120)
-	GUICtrlSetTip(-1, "Khu vực thiết lập số tiền vốn và mức cược khởi điểm.")
-
-	Local $y = 65
-	GUICtrlCreateLabel("Vốn ban đầu (VND):", 20, $y, 160, 20)
-	$g_hInput_InitialCapital = GUICtrlCreateInput("0", 180, $y - 4, 130, 24)
-	GUICtrlSetBkColor($g_hInput_InitialCapital, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Nhập tổng số vốn bạn mang vào bàn." & @CRLF & "Ví dụ: 10.000.000")
-
-	$y += 35
-	GUICtrlCreateLabel("Giá trị cược (VND):", 20, $y, 160, 20)
-	$g_hInput_InitialBet = GUICtrlCreateInput("0", 180, $y - 4, 130, 24)
-	GUICtrlSetBkColor($g_hInput_InitialBet, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Số tiền cược cho Lệnh 1 (Base Bet)." & @CRLF & "Các lệnh sau sẽ nhân lên dựa theo QLV." & @CRLF & "Ví dụ: 50.000")
-EndFunc   ;==>_CreateGroup_Settings
+	Local $hGroup = _CreateStyledGroup("Vốn & Cài Đặt Cược", 10, 35, 290, 85)
+	Local $y = 55
+	GUICtrlCreateLabel("Vốn ban đầu:", 20, $y, 100, 20)
+	$g_hInput_InitialCapital = GUICtrlCreateInput("0", 130, $y - 3, 160, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+	$y += 28
+	GUICtrlCreateLabel("Giá trị cược:", 20, $y, 100, 20)
+	$g_hInput_InitialBet = GUICtrlCreateInput("0", 130, $y - 3, 160, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+EndFunc
 
 Func _CreateGroup_BettingMethod()
-	Local $hGroup = GUICtrlCreateGroup("🛠️ PHƯƠNG PHÁP CƯỢC & QUẢN LÝ VỐN ĐỘNG", 10, 165, 320, 425)
-	GUICtrlSetFont(-1, 10, 800)
+	$g_hGroup_BettingMethod = GUICtrlCreateGroup("PHƯƠNG PHÁP CƯỢC", 10, 125, 290, 240)
+	GUICtrlSetFont(-1, 9, 800)
 	GUICtrlSetColor(-1, 0x00008B)
-	GUICtrlSetBkColor(-1, 0xF5F5F5)
 
-	Local $x_col1 = 20, $y = 185
+	Local $y = 145
+	$g_hCheckbox_SeparateQLV = GUICtrlCreateCheckbox("QLV Riêng", 20, $y, 90, 20)
+	$g_hCheckbox_ReverseLogic = GUICtrlCreateCheckbox("Bám Chuỗi", 130, $y, 90, 20)
 
-	; 1. HÀNG 1: QLV Riêng & Nối đuôi
-	$g_hCheckbox_SeparateQLV = GUICtrlCreateCheckbox("🛡️ QLV Riêng Biệt", $x_col1, $y, 140, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0x006400)
-
-	$g_hCheckbox_ContinuousMode = GUICtrlCreateCheckbox("🦊 Đánh Nối Đuôi", $x_col1 + 150, $y, 140, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0xD2691E)
-
-	; 2. HÀNG 2: Bám Chuỗi & Nháp Tình Báo
-	$y += 24
-	$g_hCheckbox_ReverseLogic = GUICtrlCreateCheckbox("🔗 Bám Chuỗi", $x_col1, $y, 140, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0x8B0000)
-
-	$g_hCheckbox_VirtualBet = GUICtrlCreateCheckbox("🕵️ Nháp Tình Báo", $x_col1 + 150, $y, 140, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0x4B0082)
-
-	; 3. HÀNG 3: Blacklist (Né Cầu) - Chèn giãn cách hợp lý
-	$y += 24
-	$g_hCheckbox_Blacklist = GUICtrlCreateCheckbox("🚫 Né Cầu (Blacklist):", $x_col1, $y, 145, 20)
-	GUICtrlSetFont(-1, 9, 800)
-	GUICtrlSetColor(-1, 0xFF0000)
-
-	$g_hInput_Blacklist = GUICtrlCreateInput("DDD, VVV", $x_col1 + 150, $y - 2, 135, 22)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetBkColor(-1, 0xFFE4E1)
-	GUICtrlSetTip(-1, "Nhập chuỗi muốn né, cách nhau bằng dấu phẩy. VD: DDD, VVV")
-
-	; 4. HÀNG 4: Lãi Kép %
-	$y += 24
-	$g_hCheckbox_LaiKepVIP = GUICtrlCreateCheckbox("💎 Lãi Kép (%Vốn):", $x_col1, $y, 140, 20)
-	GUICtrlSetFont(-1, 9, 800)
-	GUICtrlSetColor(-1, 0xFF00FF)
-
-	$g_hInput_LaiKepPercent = GUICtrlCreateInput("1", $x_col1 + 145, $y - 2, 40, 22, 0x2001)
-	GUICtrlSetFont(-1, 10, 700)
-	GUICtrlSetBkColor(-1, 0xE0FFFF)
-	GUICtrlCreateLabel("%", $x_col1 + 190, $y, 20, 20)
-	GUICtrlSetFont(-1, 10, 800)
-	GUICtrlSetColor(-1, 0xFF00FF)
-
-	; 5. HÀNG 5: Mốc Dương & Mốc Âm
-	$y += 26
-	GUICtrlCreateLabel("📈 Mốc Dương:", $x_col1, $y+2, 100, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0x008000)
-	$g_hInput_TargetProfitPercent = GUICtrlCreateInput("10", $x_col1 + 105, $y, 35, 22, 0x2001)
-	GUICtrlSetBkColor(-1, 0x98FB98)
-	GUICtrlSetFont(-1, 10, 700)
-	GUICtrlCreateLabel("%", $x_col1 + 145, $y+2, 15, 20)
-	GUICtrlSetFont(-1, 9, 800)
-
-	GUICtrlCreateLabel("📉 Mốc Âm:", $x_col1 + 170, $y+2, 75, 20)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0xCC0000)
-	$g_hInput_StopLossPercent = GUICtrlCreateInput("20", $x_col1 + 245, $y, 35, 22, 0x2001)
-	GUICtrlSetBkColor(-1, 0xFFC0CB)
-	GUICtrlSetFont(-1, 10, 700)
-	GUICtrlCreateLabel("%", $x_col1 + 285, $y+2, 15, 20)
-	GUICtrlSetFont(-1, 9, 800)
-
-	; 6. HÀNG 6: HÀNH ĐỘNG KHI CHẠM MỐC
-	$y += 28
-	GUICtrlCreateLabel("⚡ Chạm mốc Lãi / Lỗ thì:", $x_col1, $y, 160, 20)
-	GUICtrlSetFont(-1, 9, 600)
+	$y += 25
+	$g_hLabel_TieuDeCongThuc = GUICtrlCreateLabel("📝 NHẬP CÔNG THỨC CƯỢC:", 20, $y, 260, 20)
 	GUICtrlSetColor(-1, 0x0000FF)
 
 	$y += 20
-	$g_hRadio_Action_Stop = GUICtrlCreateRadio("Dừng", $x_col1, $y, 55, 20)
-	GUICtrlSetState(-1, $GUI_CHECKED)
-
-	$g_hRadio_Action_PauseMin = GUICtrlCreateRadio("Nghỉ", $x_col1 + 60, $y, 55, 20)
-	$g_hInput_Action_PauseMin = GUICtrlCreateInput("15", $x_col1 + 115, $y-2, 35, 22, 0x2001)
-	GUICtrlCreateLabel("ph", $x_col1 + 155, $y+2, 25, 20) ; Thu gọn chữ phút để dễ nhìn
-
-	$g_hRadio_Action_PauseHand = GUICtrlCreateRadio("Nghỉ", $x_col1 + 185, $y, 55, 20)
-	$g_hInput_Action_PauseHand = GUICtrlCreateInput("5", $x_col1 + 240, $y-2, 35, 22, 0x2001)
-	GUICtrlCreateLabel("ván", $x_col1 + 280, $y+2, 30, 20)
-
-	; 7. Ô NHẬP CÔNG THỨC (Đã thu gọn chiều cao cho vừa khung chuẩn)
-	$y += 28
-	GUICtrlCreateLabel("📝 NHẬP CÔNG THỨC CƯỢC:", $x_col1, $y, 280, 20)
-	GUICtrlSetFont(-1, 9, 800)
-	GUICtrlSetColor(-1, 0x0000FF)
-
-	$y += 20
-	$g_hInput_CustomRules = GUICtrlCreateEdit("", $x_col1, $y, 290, 105, BitOR(0x00200000, 0x00000040, 0x00001000))
-	GUICtrlSetFont(-1, 10, 600)
+	$g_hInput_CustomRules = GUICtrlCreateEdit("", 20, $y, 270, 155, BitOR(0x00200000, 0x00000040, 0x00001000))
 	GUICtrlSetBkColor(-1, 0xFFFACD)
-
-	GUICtrlCreateGroup("", -99, -99, 1, 1)
 EndFunc
+
 Func _CreateGroup_QLV_On_Main()
-	_CreateStyledGroup("Cấu Hình Quản Lý Vốn", 10, 590, 320, 240)
-
-	Local $y_inner = 615
-
-	; --- Nhóm con bên trong ---
-	$g_hGroup_QLV_Flexible = GUICtrlCreateGroup("", 15, $y_inner - 10, 305, 210)
-
-	; --- CỘT TRÁI (DANH SÁCH LỆNH) ---
-	GUICtrlCreateLabel("Lệnh-Vốn-Thắng-Thua", 20, $y_inner, 150, 15)
+	$g_hGroup_QLV_Main = _CreateStyledGroup("Cấu Hình Quản Lý Vốn", 10, 370, 290, 185)
+	Local $y_inner = 390
+	$g_hLbl_QLV1 = GUICtrlCreateLabel("Lệnh-Vốn-Thắng-Thua", 20, $y_inner, 150, 15)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x800080)
 
-	$g_hInput_CustomQLV_Edit = GUICtrlCreateEdit("", 20, $y_inner + 20, 135, 180, BitOR($ES_AUTOVSCROLL, $WS_VSCROLL))
-	GUICtrlSetBkColor($g_hInput_CustomQLV_Edit, 0xF0FFF0)
-	GUICtrlSetFont($g_hInput_CustomQLV_Edit, 9)
-	GUICtrlSetTip(-1, "Cấu trúc: [Tên Lệnh]-[Hệ Số Vốn]-[Lệnh Sau Khi Thắng]-[Lệnh Sau Khi Thua]" & @CRLF & _
-			"Ví dụ: 0-1-0-1 (Lệnh 0 đánh 1 đơn vị. Thắng về 0, Thua lên 1)" & @CRLF & _
-			"Ví dụ: 1-2-0-2 (Lệnh 1 đánh 2 đơn vị. Thắng về 0, Thua lên 2)")
+	$g_hInput_CustomQLV_Edit = GUICtrlCreateEdit("", 20, $y_inner + 18, 125, 135, BitOR($ES_AUTOVSCROLL, $WS_VSCROLL, $ES_NOHIDESEL))
+	GUICtrlSetBkColor(-1, 0xF0FFF0)
 
-	; --- CỘT PHẢI (NÚT BẤM) ---
-	GUICtrlCreateLabel("Chọn QLV mẫu:", 165, $y_inner, 100, 20)
-	$g_hCombo_QLV_Presets = GUICtrlCreateCombo("", 165, $y_inner + 20, 145, 25, $CBS_DROPDOWNLIST)
-	GUICtrlSetTip(-1, "Chọn các kiểu quản lý vốn mẫu (Gấp thếp, Fibonacci, Đều tiền...).")
-
-	$g_hButton_SaveQLV = GUICtrlCreateButton("Lưu", 165, $y_inner + 55, 70, 25)
+	$g_hLbl_QLV2 = GUICtrlCreateLabel("Chọn QLV mẫu:", 155, $y_inner, 100, 20)
+	$g_hCombo_QLV_Presets = GUICtrlCreateCombo("", 155, $y_inner + 18, 125, 25, $CBS_DROPDOWNLIST)
+	$g_hButton_SaveQLV = GUICtrlCreateButton("Lưu", 155, $y_inner + 50, 55, 25)
 	GUICtrlSetBkColor(-1, 0x90EE90)
-	GUICtrlSetTip(-1, "Lưu bảng QLV hiện tại thành mẫu mới để dùng lại sau này.")
-
-	$g_hButton_DeleteQLV = GUICtrlCreateButton("Xóa", 240, $y_inner + 55, 70, 25)
+	$g_hButton_DeleteQLV = GUICtrlCreateButton("Xóa", 215, $y_inner + 50, 65, 25)
 	GUICtrlSetBkColor(-1, 0xFFB6C1)
-	GUICtrlSetTip(-1, "Xóa mẫu QLV đang chọn khỏi danh sách.")
+EndFunc
 
-	GUICtrlCreateGroup("", -99, -99, 1, 1)
-EndFunc   ;==>_CreateGroup_QLV_On_Main
+Func _ToggleBaccaratLeftColumn($iState)
+    ; Ẩn sạch sẽ khung Phương Pháp Cược
+    GUICtrlSetState($g_hGroup_BettingMethod, $iState)
+    GUICtrlSetState($g_hCheckbox_SeparateQLV, $iState)
+    GUICtrlSetState($g_hCheckbox_ReverseLogic, $iState)
+    GUICtrlSetState($g_hLabel_TieuDeCongThuc, $iState)
+    GUICtrlSetState($g_hInput_CustomRules, $iState)
 
+    ; Ẩn sạch sẽ khung Quản Lý Vốn
+    GUICtrlSetState($g_hGroup_QLV_Main, $iState)
+    GUICtrlSetState($g_hLbl_QLV1, $iState)
+    GUICtrlSetState($g_hInput_CustomQLV_Edit, $iState)
+    GUICtrlSetState($g_hLbl_QLV2, $iState)
+    GUICtrlSetState($g_hCombo_QLV_Presets, $iState)
+    GUICtrlSetState($g_hButton_SaveQLV, $iState)
+    GUICtrlSetState($g_hButton_DeleteQLV, $iState)
+EndFunc
+; ================= CỘT 2: Ở GIỮA (Cầu, Màn hình TV) =================
 Func _CreateGroup_BPT_Totals()
-	; [THAY ĐỔI] Đẩy Y lên 300 (Cũ là 400)
-	_CreateStyledGroup("Tổng", 340, 300, 500, 100)
+    $g_hGroup_BPTTotals = _CreateStyledGroup("Tổng Số Ván", 310, 35, 360, 60)
+    Local $y_line1 = 60
 
-	Local $y_line1 = 320, $h = 25 ; [THAY ĐỔI] Y nội bộ cũng giảm theo 100px
-	Local $x_b = 380, $x_p = 540, $x_t = 700
-	Local $w_label = 20, $w_val = 60
+    $g_hLbl_B = GUICtrlCreateLabel("B:", 320, $y_line1, 20, 20)
+    GUICtrlSetColor(-1, 0xF70102)
+    $g_hLabel_TotalB_Val = GUICtrlCreateLabel("0", 340, $y_line1, 40, 20)
 
-	GUICtrlCreateLabel("B:", $x_b, $y_line1, $w_label, $h, $SS_CENTER)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0xF70102)
-	$g_hLabel_TotalB_Val = GUICtrlCreateLabel("0", $x_b + $w_label, $y_line1, $w_val, $h)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0xF70102)
+    $g_hLbl_P = GUICtrlCreateLabel("P:", 390, $y_line1, 20, 20)
+    GUICtrlSetColor(-1, 0x0182FA)
+    $g_hLabel_TotalP_Val = GUICtrlCreateLabel("0", 410, $y_line1, 40, 20)
 
-	GUICtrlCreateLabel("P:", $x_p, $y_line1, $w_label, $h, $SS_CENTER)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0x0182FA)
-	$g_hLabel_TotalP_Val = GUICtrlCreateLabel("0", $x_p + $w_label, $y_line1, $w_val, $h)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0x0182FA)
+    $g_hLbl_T = GUICtrlCreateLabel("T:", 460, $y_line1, 20, 20)
+    GUICtrlSetColor(-1, 0x29BC2F)
+    $g_hLabel_TotalT_Val = GUICtrlCreateLabel("0", 480, $y_line1, 40, 20)
 
-	GUICtrlCreateLabel("T:", $x_t, $y_line1, $w_label, $h, $SS_CENTER)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0x29BC2F)
-	$g_hLabel_TotalT_Val = GUICtrlCreateLabel("0", $x_t + $w_label, $y_line1, $w_val, $h)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0x29BC2F)
-
-	Local $y_line2 = 360 ; [THAY ĐỔI] Y dòng 2 (Cũ là 460)
-	Local $w_total_label = 120, $w_total_val = 100
-	Local $x_center = 340 + (500 / 2)
-	Local $x_total_label = $x_center - (($w_total_label + $w_total_val) / 2)
-	Local $x_total_val = $x_total_label + $w_total_label
-
-	GUICtrlCreateLabel("Tổng số ván:", $x_total_label, $y_line2, $w_total_label, 25)
-	GUICtrlSetFont(-1, 12, 800)
-	GUICtrlSetColor(-1, 0x800080)
-	$g_hLabel_TotalHands = GUICtrlCreateLabel("0", $x_total_val, $y_line2, $w_total_val, 25)
-	GUICtrlSetFont($g_hLabel_TotalHands, 12, 800)
-	GUICtrlSetColor($g_hLabel_TotalHands, 0x800080)
-EndFunc   ;==>_CreateGroup_BPT_Totals
+$g_hLbl_TongVan = GUICtrlCreateLabel("Tổng:", 530, $y_line1, 40, 20)
+    $g_hLabel_TotalHands = GUICtrlCreateLabel("0", 575, $y_line1 - 2, 60, 22)
+    GUICtrlSetFont($g_hLabel_TotalHands, 11, 800) ; In đậm, to hơn
+    GUICtrlSetColor($g_hLabel_TotalHands, 0x0000FF) ; Màu xanh biển cho nổi bật
+EndFunc
 
 Func _CreateGroup_HistoryDisplay()
-	; Dời Y từ 410 lên 400. (Chiều cao 185 -> Đáy sẽ ở mốc 585, bằng với PP Cược)
-	_CreateStyledGroup("Lịch Sử Cầu", 340, 400, 500, 185)
+    _CreateStyledGroup("Lịch Sử Cầu", 310, 100, 360, 130)
+    Local $yStart = 120, $xStart = 318
+    For $iRow = 0 To 5
+        For $iCol = 0 To 19
+            Local $iIndex = $iCol + ($iRow * 20)
+            $g_aLabel_History[$iIndex] = GUICtrlCreateLabel("-", $xStart + $iCol * 17.2, $yStart + $iRow * 17.2, 15, 15, $SS_CENTER)
+            GUICtrlSetFont(-1, 8, 700)
+        Next
+    Next
+EndFunc
 
-	Local Const $iCols = 20, $iRows = 6
-	Local $labelWidth = 15.5, $labelHeight = 14.5
-	Local $xSpacing = 9, $ySpacing = 5
-	Local $groupX = 340, $groupWidth = 500
-
-	; Kéo yStart lên theo khung (từ 435 lên 425)
-	Local $yStart = 425
-
-	Local $totalGridWidth = ($iCols * $labelWidth) + (($iCols - 1) * $xSpacing)
-	Local $xStart = $groupX + ($groupWidth - $totalGridWidth) / 2
-
-	For $iRow = 0 To $iRows - 1
-		For $iCol = 0 To $iCols - 1
-			Local $iIndex = $iCol + ($iRow * $iCols)
-			Local $xPos = $xStart + $iCol * ($labelWidth + $xSpacing)
-			Local $yPos = $yStart + $iRow * ($labelHeight + $ySpacing)
-			$g_aLabel_History[$iIndex] = GUICtrlCreateLabel("-", $xPos, $yPos, $labelWidth, $labelHeight, $SS_CENTER)
-			_StyleResultLabel($g_aLabel_History[$iIndex], "-", False, False)
-		Next
-	Next
-EndFunc   ;==>_CreateGroup_HistoryDisplay
 Func _CreateGroup_HistoryLog()
-	; Đặt Y = 590 và Chiều cao = 240 (Bằng y chang khung QLV bên trái)
-	_CreateStyledGroup("Màn Hình Theo Dõi Trực Tiếp (TV Screen)", 340, 590, 500, 240)
-	Local $x = 350
-	Local $y = 615 ; Đẩy màn hình lên theo khung
+    $g_hGroup_ActivityLog = _CreateStyledGroup("Màn Hình TV Screen", 310, 235, 360, 290)
+    $g_hEdit_ActivityLog = GUICtrlCreateEdit("", 318, 255, 344, 260, BitOR(0x00200000, 0x0040, 0x0800))
+    GUICtrlSetBkColor($g_hEdit_ActivityLog, 0x000000)
+    GUICtrlSetColor($g_hEdit_ActivityLog, 0x00FF00)
+EndFunc
 
-	; Tăng chiều cao của cái màn hình đen lên 205 cho vừa vặn khung mới
-	$g_hEdit_ActivityLog = GUICtrlCreateEdit("", $x, $y, 480, 205, BitOR(0x00200000, 0x0040, 0x0800)) ; VScroll + AutoVScroll + ReadOnly
-	GUICtrlSetBkColor($g_hEdit_ActivityLog, 0x000000) ; Nền đen
-	GUICtrlSetColor($g_hEdit_ActivityLog, 0x00FF00)   ; Chữ xanh lá
-	GUICtrlSetFont($g_hEdit_ActivityLog, 9, 600, "Consolas")
-EndFunc   ;==>_CreateGroup_HistoryLog
+; ================= CỘT 3: BÊN PHẢI (Mục Tiêu & Control) =================
 Func _CreateGroup_InfoAndTargets()
-	_CreateStyledGroup("Thông Tin & Mục Tiêu", 850, 40, 410, 360)
-	Local $x = 860, $w = 390
-	Local $y = 65
-	GUICtrlCreateLabel("Số dư hiện tại:", $x, $y, 110, 20)
-	$g_hLabel_CurrentBalance = GUICtrlCreateLabel("0 VND", $x + 110, $y - 5, 280, 25, BitOR($SS_CENTER, $SS_SUNKEN))
-	GUICtrlSetFont($g_hLabel_CurrentBalance, 13, 800)
-	GUICtrlSetBkColor($g_hLabel_CurrentBalance, 0xFFFACD)
-	GUICtrlSetColor($g_hLabel_CurrentBalance, 0x0000FF)
+	$g_hGroup_InfoTargets = _CreateStyledGroup("Thông Tin & Mục Tiêu", 680, 35, 290, 275)
+	Local $x = 690, $w = 270, $y = 55
+
+	GUICtrlCreateLabel("Số dư hiện tại:", $x, $y, 100, 20)
+	$g_hLabel_CurrentBalance = GUICtrlCreateLabel("0 đ", $x + 100, $y - 3, 170, 22, BitOR($SS_CENTER, $SS_SUNKEN))
+	GUICtrlSetBkColor(-1, 0xFFFACD)
+	GUICtrlSetColor(-1, 0x0000FF)
+
+	$y += 28
+	GUICtrlCreateLabel("Lãi/Lỗ phiên này:", $x, $y, 100, 20)
+	$g_hLabel_Profit = GUICtrlCreateLabel("0 đ", $x + 100, $y - 3, 170, 22, BitOR($SS_CENTER, $SS_SUNKEN))
+	GUICtrlSetBkColor(-1, 0xFFFACD)
+
+	; Ẩn Tra cứu và Volume
+	$g_hCombo_VolumeFilter = GUICtrlCreateCombo("Hôm Nay", -999, -999, 10, 10)
+	$g_hDate_VolumeFilter = GUICtrlCreateDate("", -999, -999, 10, 10)
+	$g_hLabel_TotalVolume = GUICtrlCreateLabel("", -999, -999, 10, 10)
 
 	$y += 35
-	GUICtrlCreateLabel("Lãi/Lỗ phiên này:", $x, $y, 110, 20)
-	$g_hLabel_Profit = GUICtrlCreateLabel("0 VND", $x + 110, $y - 5, 280, 25, BitOR($SS_CENTER, $SS_SUNKEN))
-	GUICtrlSetFont($g_hLabel_Profit, 13, 800)
-	GUICtrlSetBkColor($g_hLabel_Profit, 0xFFFACD)
+	$g_hLabel_NetDay = GUICtrlCreateLabel("LỢI NHUẬN TỔNG: 0 đ", $x, $y, $w, 23, BitOR($SS_CENTER, $SS_SUNKEN))
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+	GUICtrlSetColor(-1, 0x006400)
 
-	$y += 40
-	GUICtrlCreateLabel("Tra cứu Volume:", $x, $y, 100, 20)
-	$g_hCombo_VolumeFilter = GUICtrlCreateCombo("Hôm Nay", $x + 105, $y - 3, 100, 25, $CBS_DROPDOWNLIST)
-	GUICtrlSetData($g_hCombo_VolumeFilter, "Hôm Nay|Tuần Này|Tháng Này|Năm Nay|TỔNG VĨNH VIỄN|Chọn Ngày Cụ Thể", "Hôm Nay")
-	$g_hDate_VolumeFilter = GUICtrlCreateDate("", $x + 215, $y - 3, 100, 25, 0)
-	GUICtrlSendMsg($g_hDate_VolumeFilter, 0x1032, 0, "yyyy-MM-dd")
-	GUICtrlSetState($g_hDate_VolumeFilter, $GUI_HIDE)
+	$y += 35
+	$g_hCheckbox_DailyShield = GUICtrlCreateCheckbox("🎯 MỤC TIÊU CHỐT LÃI / CẮT LỖ", $x, $y, 250, 20)
+	GUICtrlSetColor(-1, 0xFF00FF)
 
-	$g_hLabel_TotalVolume = GUICtrlCreateLabel("0 VND", $x, $y + 25, $w, 25, BitOR($SS_CENTER, $SS_SUNKEN))
-	GUICtrlSetFont($g_hLabel_TotalVolume, 14, 800)
-	GUICtrlSetBkColor($g_hLabel_TotalVolume, 0xFFE4B5)
-	GUICtrlSetColor($g_hLabel_TotalVolume, 0x8A2BE2)
+	; Đã Sắp Xếp So Le Gọn Gàng
+	$y += 25
+	GUICtrlCreateLabel("Chốt lời:", $x, $y, 55, 20)
+	$g_hInput_DailyTarget = GUICtrlCreateInput("1.000.000", $x + 55, $y - 2, 75, 22)
+	GUICtrlCreateLabel("Cắt lỗ:", $x + 135, $y, 50, 20)
+	GUICtrlSetColor(-1, 0xFF0000)
+	$g_hInput_DailyStopLoss = GUICtrlCreateInput("-1.000.000", $x + 185, $y - 2, 80, 22)
 
-	$y += 60
-	GUICtrlCreateLabel("Tra cứu Lãi/Lỗ:", $x, $y, 100, 20)
-	$g_hCombo_ProfitFilter = GUICtrlCreateCombo("Hôm Nay", $x + 105, $y - 3, 100, 25, $CBS_DROPDOWNLIST)
-	GUICtrlSetData($g_hCombo_ProfitFilter, "Hôm Nay|Tuần Này|Tháng Này|Năm Nay|TỔNG VĨNH VIỄN|Chọn Ngày Cụ Thể", "Hôm Nay")
-	$g_hDate_ProfitFilter = GUICtrlCreateDate("", $x + 215, $y - 3, 100, 25, 0)
-	GUICtrlSendMsg($g_hDate_ProfitFilter, 0x1032, 0, "yyyy-MM-dd")
-	GUICtrlSetState($g_hDate_ProfitFilter, $GUI_HIDE)
-
-	$g_hLabel_TotalProfitStats = GUICtrlCreateLabel("0 VND", $x, $y + 25, $w, 25, BitOR($SS_CENTER, $SS_SUNKEN))
-	GUICtrlSetFont($g_hLabel_TotalProfitStats, 14, 800)
-	GUICtrlSetBkColor($g_hLabel_TotalProfitStats, 0xE8F8F5)
-	GUICtrlSetColor($g_hLabel_TotalProfitStats, 0x006400)
-	$y += 60
-	GUICtrlCreateLabel("Chốt lời (đ):", $x, $y, 80, 20)
-	$g_hInput_TakeProfit = GUICtrlCreateInput("100.000", $x + 85, $y - 2, 85, 22)
-	GUICtrlSetBkColor($g_hInput_TakeProfit, 0xE0FFFF)
-
-	GUICtrlCreateLabel("Kéo đuôi (đ):", $x + 180, $y, 80, 20)
+	$y += 28
+	GUICtrlCreateLabel("Kéo đuôi:", $x, $y, 55, 20)
 	GUICtrlSetColor(-1, 0x008000)
-	$g_hInput_TrailingStop = GUICtrlCreateInput("50.000", $x + 265, $y - 2, 85, 22)
-	GUICtrlSetBkColor($g_hInput_TrailingStop, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Khoảng cách Gồng Lãi. Khi đạt chốt lời, tool KHÔNG DỪNG mà tiếp tục đánh. Nếu lãi tụt xuống bằng khoảng cách này so với ĐỈNH LÃI thì mới chốt.")
+	$g_hInput_DailyTrailing = GUICtrlCreateInput("200.000", $x + 55, $y - 2, 75, 22)
 
-	$y += 30
-	GUICtrlCreateLabel("Cắt lỗ (đ):", $x, $y, 80, 20)
-	$g_hInput_StopLoss = GUICtrlCreateInput("200.000", $x + 85, $y - 2, 85, 22)
-	GUICtrlSetBkColor($g_hInput_StopLoss, 0xE0FFFF)
-EndFunc   ;==>_CreateGroup_InfoAndTargets
+$y += 28
+	GUICtrlCreateLabel("Chạm mốc:", $x, $y, 70, 20)
+	GUICtrlSetColor(-1, 0x0000FF)
+	$g_hRadio_Action_Stop = GUICtrlCreateRadio("Dừng", $x + 70, $y, 55, 20)
+
+	$y += 24
+	; Dịch toàn bộ cụm này sang trái mạnh (x+10 thay vì x+50)
+	$g_hRadio_Action_PauseMin = GUICtrlCreateRadio("Nghỉ", $x + 10, $y, 50, 20)
+	$g_hInput_Action_PauseMin = GUICtrlCreateInput("15", $x + 65, $y - 2, 35, 22)
+	GUICtrlCreateLabel("phút", $x + 105, $y, 35, 20)
+
+	$g_hRadio_Action_PauseHand = GUICtrlCreateRadio("Nghỉ", $x + 150, $y, 50, 20)
+	$g_hInput_Action_PauseHand = GUICtrlCreateInput("5", $x + 205, $y - 2, 35, 22)
+	GUICtrlCreateLabel("ván", $x + 245, $y, 25, 20)
+EndFunc
 Func _CreateGroup_UserConfig_Main()
-	_CreateStyledGroup("Điều Khiển & Tùy Chọn Nhanh", 850, 405, 410, 380)
-	Local $x = 860, $y = 430
+	_CreateStyledGroup("Điều Khiển Nhanh", 680, 315, 290, 210)
+	Local $x = 690, $y = 345
 
 	GUICtrlCreateLabel("Cấu hình:", $x, $y, 60, 20)
-	$g_hCombo_Profiles_Main = GUICtrlCreateCombo("", $x + 70, $y - 2, 320, 25, $CBS_DROPDOWNLIST)
+	$g_hCombo_Profiles_Main = GUICtrlCreateCombo("", $x + 70, $y - 3, 200, 25, $CBS_DROPDOWNLIST)
+
 	$y += 35
+	GUICtrlCreateLabel("Click:", $x, $y, 40, 20)
+	$g_hRadio_ClickMode_Control_Main = GUICtrlCreateRadio("Nhanh", $x + 50, $y, 60, 20)
+	$g_hRadio_ClickMode_Mouse_Main = GUICtrlCreateRadio("Chuột", $x + 120, $y, 60, 20)
 
-; ---> THÊM Ô TÙY CHỌN CỬA SỔ VÀO ĐÂY <---
-	GUICtrlCreateLabel("Cửa sổ:", $x, $y, 60, 20)
-	; Để khoảng trống "" ở đây để không bị trùng chữ
-	$g_hCombo_WinMode = GUICtrlCreateCombo("", $x + 70, $y - 2, 320, 25, $CBS_DROPDOWNLIST)
-	; Thêm dấu | ở đầu để dọn sạch menu trước khi nạp 3 tùy chọn
-	GUICtrlSetData($g_hCombo_WinMode, "|Luôn nổi (Không hạ)|Thu nhỏ khi cược -> Bật lên|Thu nhỏ ẩn đi luôn", "Thu nhỏ khi cược -> Bật lên")
+	; ẨN TỐC ĐỘ CLICK VÀ TỐC ĐỘ DI CHUYỂN
+	$g_hInput_ClickDelay_Main = GUICtrlCreateInput("10", -999, -999, 10, 10)
+	$g_hInput_MouseSpeed = GUICtrlCreateInput("0", -999, -999, 10, 10)
+
 	$y += 35
-	; ----------------------------------------
-	GUICtrlCreateLabel("Click:", $x, $y, 60, 20)
-	$g_hRadio_ClickMode_Control_Main = GUICtrlCreateRadio("Nhanh", $x + 70, $y, 90, 20)
-	$g_hRadio_ClickMode_Mouse_Main = GUICtrlCreateRadio("Chuột", $x + 170, $y, 140, 20)
-	GUICtrlCreateGroup("", -99, -99, 1, 1)
-	$y += 30
+	; ---> NÚT GHIM TOOL NẰM Ở ĐÂY <---
+	Global $g_hCheckbox_PinTool = GUICtrlCreateCheckbox("📌 Ghim Tool luôn nổi (Chống đè)", $x + 20, $y, 250, 20)
+	GUICtrlSetFont(-1, 9, 800)
+	GUICtrlSetColor(-1, 0xFF00FF) ; Màu tím nổi bật
+	GUICtrlSetState(-1, $GUI_CHECKED) ; Mặc định là bật
 
-	GUICtrlCreateLabel("TĐ Click:", $x, $y, 80, 20)
-	$g_hInput_ClickDelay_Main = GUICtrlCreateInput("10", $x + 90, $y - 2, 50, 24)
 	$y += 35
-
-	GUICtrlCreateLabel("TĐ Di chuyển:", $x, $y, 90, 20)
-	$g_hInput_MouseSpeed = GUICtrlCreateInput("0", $x + 90, $y - 2, 50, 24)
-
-	$y += 45
-
-	$y += 40
-	$g_hButton_Start = GUICtrlCreateButton("ĐĂNG NHẬP", $x + 50, $y, 250, 45)
-	GUICtrlSetFont($g_hButton_Start, 12, 700)
-	GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
-	GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-EndFunc   ;==>_CreateGroup_UserConfig_Main
-
+	$g_hButton_Start = GUICtrlCreateButton("ĐĂNG NHẬP", $x + 30, $y, 210, 60)
+	GUICtrlSetFont(-1, 13, 800)
+	GUICtrlSetBkColor(-1, 0x33CC33)
+EndFunc
 Func _CreateTab_ConfigHelper()
-	_CreateStyledGroup("Quét Thông Tin Trực Tiếp", 15, 40, 1240, 80)
-	GUICtrlCreateLabel("Tọa độ X:", 25, 70, 70, 20)
-	$g_hInput_ScanX = GUICtrlCreateInput("", 100, 68, 80, 24, $ES_READONLY)
-	GUICtrlCreateLabel("Tọa độ Y:", 200, 70, 70, 20)
-	$g_hInput_ScanY = GUICtrlCreateInput("", 275, 68, 80, 24, $ES_READONLY)
-	GUICtrlCreateLabel("Mã màu HEX:", 375, 70, 90, 20)
-	$g_hInput_ScanColor = GUICtrlCreateInput("", 470, 68, 100, 24, $ES_READONLY)
-	$g_hLabel_ScanColorPreview = GUICtrlCreateLabel("", 580, 68, 50, 24, $SS_SUNKEN)
-
-	$g_hCheckbox_ToggleScan = GUICtrlCreateCheckbox("Bật phím '`' để quét", 650, 70, 150, 20)
-	GUICtrlSetTip(-1, "Tích vào đây, sau đó di chuột đến điểm cần lấy trên game, bấm phím ` (cạnh số 1) để xem tọa độ/màu.")
-
-	GUICtrlSetData($g_hInput_ScanColor, "0x000000")
-	GUICtrlSetBkColor($g_hLabel_ScanColorPreview, 0x000000)
-	AdlibRegister("_UpdateColorPreview", 250)
-
-	; --- CỘT TRÁI: CẤU HÌNH TỌA ĐỘ & MÀU SẮC ---
-	_CreateStyledGroup("Thiết Lập Tọa Độ & Màu Sắc", 15, 130, 600, 480)
-	Local $x_col1 = 25, $y_start = 155, $y_step = 35
-	Local $y1 = $y_start
-
-; ========================================================
-	; --- CHỌN LOẠI TRÒ CHƠI ---
-	; ========================================================
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Chọn Game:", $x_col1, $y1, 150, 20))
-
-	; Để khoảng trống ban đầu "" để tránh trùng lặp
-	$g_hCombo_GameMode = GUICtrlCreateCombo("", $x_col1 + 160, $y1 - 2, 280, 25, $CBS_DROPDOWNLIST)
-
-	; Chêm dấu | ở đầu để dọn sạch rác cũ trước khi nạp
-	GUICtrlSetData($g_hCombo_GameMode, "|Baccarat Thường|Long Long (Evo)", "Baccarat Thường")
-	GUICtrlSetFont(-1, 9, 700)
-	_ArrayAdd($g_aConfigControls, $g_hCombo_GameMode)
-	$y1 += $y_step
-	; ========================================================
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Class cửa sổ Game:", $x_col1, $y1, 150, 20))
-	$g_hInput_WindowClass = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 280, 24)
-	GUICtrlSetTip(-1, "Tên lớp cửa sổ (Window Class) của trình duyệt hoặc app game. Dùng AutoIt Info Tool để lấy.")
-	_ArrayAdd($g_aConfigControls, $g_hInput_WindowClass)
-	$y1 += $y_step
-
-	; -- BANKER / PLAYER POS --
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Nút Banker (X, Y):", $x_col1, $y1, 150, 20))
-	$g_hInput_BankerX = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BankerX)
-	$g_hInput_BankerY = GUICtrlCreateInput("", $x_col1 + 225, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BankerY)
-	$g_hButton_GetBankerPos = GUICtrlCreateButton("Lấy", $x_col1 + 295, $y1 - 4, 50, 28)
-	GUICtrlSetTip(-1, "Di chuột vào nút BANKER trên bàn chơi -> Bấm phím S -> Bấm nút Lấy này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetBankerPos)
-	$y1 += $y_step
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Nút Player (X, Y):", $x_col1, $y1, 150, 20))
-	$g_hInput_PlayerX = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_PlayerX)
-	$g_hInput_PlayerY = GUICtrlCreateInput("", $x_col1 + 225, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_PlayerY)
-	$g_hButton_GetPlayerPos = GUICtrlCreateButton("Lấy", $x_col1 + 295, $y1 - 4, 50, 28)
-	GUICtrlSetTip(-1, "Di chuột vào nút PLAYER trên bàn chơi -> Bấm phím ` -> Bấm nút Lấy này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetPlayerPos)
-	$y1 += $y_step + 10
-    ; --- THÊM Ô TỌA ĐỘ NÚT TIE (HÒA) ---
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Nút Hòa/T (X, Y):", $x_col1, $y1, 150, 20))
-	$g_hInput_TieX = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_TieX)
-	$g_hInput_TieY = GUICtrlCreateInput("", $x_col1 + 225, $y1 - 2, 60, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_TieY)
-	$g_hButton_GetTiePos = GUICtrlCreateButton("Lấy", $x_col1 + 295, $y1 - 4, 50, 28)
-	GUICtrlSetTip(-1, "Di chuột vào nút HÒA (Xanh lá) -> Bấm phím ` -> Bấm nút Lấy này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetTiePos)
-	$y1 += $y_step + 10
-	; -- KHU VỰC KẾT QUẢ --
-	GUICtrlCreateLabel("--- Cấu hình Nhận diện Kết quả ---", $x_col1, $y1, 300, 20)
-	GUICtrlSetColor(-1, 0x0000FF)
-	$y1 += 25
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Màu B/P:", $x_col1, $y1, 60, 20))
-	$g_hInput_BankerColor = GUICtrlCreateInput("", $x_col1 + 65, $y1 - 2, 80, 24)
-	GUICtrlSetTip(-1, "Mã màu đặc trưng của BANKER (Thường là màu đỏ).")
-	_ArrayAdd($g_aConfigControls, $g_hInput_BankerColor)
-	$g_hButton_GetBankerColor = GUICtrlCreateButton("Lấy B", $x_col1 + 150, $y1 - 4, 45, 28)
-	GUICtrlSetTip(-1, "Di chuột vào màu Đỏ của Banker -> Bấm S -> Bấm nút này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetBankerColor)
-
-	$g_hInput_PlayerColor = GUICtrlCreateInput("", $x_col1 + 205, $y1 - 2, 80, 24)
-	GUICtrlSetTip(-1, "Mã màu đặc trưng của PLAYER (Thường là màu xanh).")
-	_ArrayAdd($g_aConfigControls, $g_hInput_PlayerColor)
-	$g_hButton_GetPlayerColor = GUICtrlCreateButton("Lấy P", $x_col1 + 290, $y1 - 4, 45, 28)
-	GUICtrlSetTip(-1, "Di chuột vào màu Xanh của Player -> Bấm S -> Bấm nút này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetPlayerColor)
-	$y1 += $y_step
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Màu Tie:", $x_col1, $y1, 60, 20))
-	$g_hInput_TieColor = GUICtrlCreateInput("", $x_col1 + 65, $y1 - 2, 80, 24)
-	GUICtrlSetTip(-1, "Mã màu đặc trưng của HÒA (Thường là màu xanh lá).")
-	_ArrayAdd($g_aConfigControls, $g_hInput_TieColor)
-	$g_hButton_GetTieColor = GUICtrlCreateButton("Lấy T", $x_col1 + 150, $y1 - 4, 45, 28)
-	GUICtrlSetTip(-1, "Di chuột vào màu Xanh Lá của Tie -> Bấm S -> Bấm nút này.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetTieColor)
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Sai số:", $x_col1 + 205, $y1, 45, 20))
-	$g_hInput_Shade_Result = GUICtrlCreateInput("10", $x_col1 + 250, $y1 - 2, 35, 24)
-	GUICtrlSetTip(-1, "Độ lệch màu cho phép (0-255). Nên để 10-20.")
-	_ArrayAdd($g_aConfigControls, $g_hInput_Shade_Result)
-	$g_hButton_TestColor_Result = GUICtrlCreateButton("Test Màu", $x_col1 + 290, $y1 - 4, 80, 28)
-	GUICtrlSetTip(-1, "Bấm để kiểm tra xem Tool có nhận diện đúng kết quả hiện tại trên màn hình không.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_TestColor_Result)
-	$y1 += $y_step
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Vùng quét KQ (X1,Y1 - X2,Y2):", $x_col1, $y1, 350, 20))
-	$y1 += 22
-	$g_hInput_ResultX1 = GUICtrlCreateInput("", $x_col1, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_ResultX1)
-	$g_hInput_ResultY1 = GUICtrlCreateInput("", $x_col1 + 55, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_ResultY1)
-	$g_hButton_GetResultTL = GUICtrlCreateButton("Lấy", $x_col1 + 110, $y1 - 4, 40, 28)
-	GUICtrlSetTip(-1, "Lấy góc TRÊN-TRÁI của vùng hiện kết quả.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetResultTL)
-
-	$g_hInput_ResultX2 = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_ResultX2)
-	$g_hInput_ResultY2 = GUICtrlCreateInput("", $x_col1 + 215, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_ResultY2)
-	$g_hButton_GetResultBR = GUICtrlCreateButton("Lấy", $x_col1 + 270, $y1 - 4, 40, 28)
-	GUICtrlSetTip(-1, "Lấy góc DƯỚI-PHẢI của vùng hiện kết quả.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetResultBR)
-	$y1 += $y_step + 10
-
-	; -- KHU VỰC GIỜ CƯỢC --
-	GUICtrlCreateLabel("--- Cấu hình Giờ Cược ---", $x_col1, $y1, 300, 20)
-	GUICtrlSetColor(-1, 0x008000)
-	$y1 += 25
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Màu Giờ Cược:", $x_col1, $y1, 100, 20))
-	$g_hInput_BetTimeColor = GUICtrlCreateInput("", $x_col1 + 110, $y1 - 2, 80, 24)
-	GUICtrlSetTip(-1, "Màu xuất hiện khi bàn cho phép đặt cược (Ví dụ: Màu xanh của đồng hồ đếm ngược).")
-	_ArrayAdd($g_aConfigControls, $g_hInput_BetTimeColor)
-	$g_hButton_GetBetTimeColor = GUICtrlCreateButton("Lấy", $x_col1 + 200, $y1 - 4, 40, 28)
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetBetTimeColor)
-
-	GUICtrlCreateLabel("Dung sai:", $x_col1 + 250, $y1, 60, 20)
-	$g_hInput_Shade_Timer = GUICtrlCreateInput("20", $x_col1 + 310, $y1 - 2, 40, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_Shade_Timer)
-	$g_hButton_TestColor_Timer = GUICtrlCreateButton("Test", $x_col1 + 360, $y1 - 4, 50, 28)
-	GUICtrlSetTip(-1, "Kiểm tra xem Tool có nhìn thấy giờ cược không.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_TestColor_Timer)
-	$y1 += $y_step
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Vùng Giờ Cược (X1,Y1-X2,Y2):", $x_col1, $y1, 350, 20))
-	$y1 += 22
-	$g_hInput_BetTimeX1 = GUICtrlCreateInput("", $x_col1, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BetTimeX1)
-	$g_hInput_BetTimeY1 = GUICtrlCreateInput("", $x_col1 + 55, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BetTimeY1)
-	$g_hButton_GetBetTimeTL = GUICtrlCreateButton("Lấy", $x_col1 + 110, $y1 - 4, 40, 28)
-	GUICtrlSetTip(-1, "Góc TRÊN-TRÁI vùng đếm ngược.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetBetTimeTL)
-
-	$g_hInput_BetTimeX2 = GUICtrlCreateInput("", $x_col1 + 160, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BetTimeX2)
-	$g_hInput_BetTimeY2 = GUICtrlCreateInput("", $x_col1 + 215, $y1 - 2, 50, 24)
-	_ArrayAdd($g_aConfigControls, $g_hInput_BetTimeY2)
-	$g_hButton_GetBetTimeBR = GUICtrlCreateButton("Lấy", $x_col1 + 270, $y1 - 4, 40, 28)
-	GUICtrlSetTip(-1, "Góc DƯỚI-PHẢI vùng đếm ngược.")
-	_ArrayAdd($g_aConfigControls, $g_hButton_GetBetTimeBR)
-
-	; --- CỘT PHẢI: CHIP ---
-	Local $x_adv = 630
-	Local $y_chip_group_start = 130
-	_CreateStyledGroup("Cấu Hình Các Loại Chip Cược", $x_adv, $y_chip_group_start, 620, 210)
-
-	Local $x_chip = $x_adv + 10
-	Local $y_chip = $y_chip_group_start + 25
-	Local $y_chip_step = 32
-
-	For $i = 0 To 4
-		$g_aCheckbox_ChipEnabled[$i] = GUICtrlCreateCheckbox("Chip " & $i + 1, $x_chip, $y_chip, 60, 20)
-		GUICtrlSetTip(-1, "Tích để sử dụng Chip này.")
-		_ArrayAdd($g_aConfigControls, $g_aCheckbox_ChipEnabled[$i])
-
-		_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Giá trị:", $x_chip + 70, $y_chip, 50, 20))
-		$g_aInput_ChipValue[$i] = GUICtrlCreateInput("", $x_chip + 120, $y_chip - 2, 80, 24)
-		GUICtrlSetTip(-1, "Giá trị thực của chip trong game (VD: 5k thì nhập 5000).")
-		_ArrayAdd($g_aConfigControls, $g_aInput_ChipValue[$i])
-
-		_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("X, Y:", $x_chip + 210, $y_chip, 35, 20))
-		$g_aInput_ChipX[$i] = GUICtrlCreateInput("", $x_chip + 250, $y_chip - 2, 50, 24)
-		_ArrayAdd($g_aConfigControls, $g_aInput_ChipX[$i])
-		$g_aInput_ChipY[$i] = GUICtrlCreateInput("", $x_chip + 305, $y_chip - 2, 50, 24)
-		_ArrayAdd($g_aConfigControls, $g_aInput_ChipY[$i])
-
-		$g_aButton_GetChipPos[$i] = GUICtrlCreateButton("Lấy", $x_chip + 365, $y_chip - 4, 60, 28)
-		GUICtrlSetTip(-1, "Di chuột vào hình Chip " & $i + 1 & " trong game -> Bấm S -> Bấm nút Lấy.")
-		_ArrayAdd($g_aConfigControls, $g_aButton_GetChipPos[$i])
-		$y_chip += $y_chip_step
-	Next
-
-	; --- QUẢN LÝ CẤU HÌNH SẢNH ---
-	_CreateStyledGroup("Quản Lý Cấu Hình Sảnh", 15, 620, 1240, 80)
-	Local $x_prof = 25, $y_prof = 645
-
-	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Chọn cấu hình sảnh:", $x_prof, $y_prof, 120, 20))
-	$g_hCombo_Profiles = GUICtrlCreateCombo("", $x_prof + 130, $y_prof - 2, 200, 25, $CBS_DROPDOWNLIST)
-	GUICtrlSetTip(-1, "Chọn danh sách các bàn đã lưu.")
-	_ArrayAdd($g_aConfigControls, $g_hCombo_Profiles)
-
-	; ========================================================
-	; --- NÚT LƯU VÀ NÚT XÓA SẢNH ---
-	; ========================================================
-	Global $g_hButton_SaveNewProfile = GUICtrlCreateButton("💾 Lưu Thành Sảnh Mới", $x_prof + 350, $y_prof - 4, 150, 30)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetBkColor(-1, 0x0082FA)
-	GUICtrlSetColor(-1, 0xFFFFFF)
-	_ArrayAdd($g_aConfigControls, $g_hButton_SaveNewProfile)
-
-	Global $g_hButton_DeleteProfile = GUICtrlCreateButton("❌ Xóa Sảnh", $x_prof + 510, $y_prof - 4, 90, 30)
-	GUICtrlSetFont(-1, 9, 700)
+	Global $g_hButton_Unlock = GUICtrlCreateButton("🔐 MỞ KHÓA", 820, 35, 140, 30)
+	GUICtrlSetFont(-1, 10, 800)
 	GUICtrlSetBkColor(-1, 0xFF4141)
 	GUICtrlSetColor(-1, 0xFFFFFF)
-	_ArrayAdd($g_aConfigControls, $g_hButton_DeleteProfile)
 
-	; Dời nút Mở Khóa / Khóa sang X = 610 để tránh đụng chạm nút Xóa
-	$g_hButton_Unlock = GUICtrlCreateButton("Mở Khóa Cấu Hình", $x_prof + 610, $y_prof - 4, 150, 30)
-	GUICtrlSetFont(-1, 9, 700)
-	GUICtrlSetColor(-1, 0x008000)
-	GUICtrlSetTip(-1, "Mở khóa để chỉnh sửa tọa độ và màu sắc.")
+	Global $g_iTechTabStart = GUICtrlCreateDummy()
 
-	$g_hButton_Lock = GUICtrlCreateButton("Khóa Cấu Hình", $x_prof + 610, $y_prof - 4, 150, 30)
-	GUICtrlSetFont(-1, 9, 700)
+	; ================= THÊM LẠI THANH QUÉT TỌA ĐỘ VÀ NÚT BẬT PHÍM ` =================
+	GUICtrlCreateLabel("Tọa độ X:", 20, 42, 60, 20)
+	$g_hInput_ScanX = GUICtrlCreateInput("", 80, 40, 50, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+	GUICtrlCreateLabel("Y:", 140, 42, 20, 20)
+	$g_hInput_ScanY = GUICtrlCreateInput("", 160, 40, 50, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+	GUICtrlCreateLabel("Mã Màu:", 220, 42, 60, 20)
+	$g_hInput_ScanColor = GUICtrlCreateInput("", 280, 40, 70, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+	$g_hLabel_ScanColorPreview = GUICtrlCreateLabel("", 360, 40, 30, 22)
+
+	$g_hCheckbox_ToggleScan = GUICtrlCreateCheckbox("Bật phím ` (Góc trái số 1) lấy Tọa độ/Màu", 410, 40, 300, 20)
+	GUICtrlSetFont(-1, 9, 800)
 	GUICtrlSetColor(-1, 0xFF0000)
-	GUICtrlSetTip(-1, "Khóa lại để tránh bấm nhầm.")
-	GUICtrlSetState($g_hButton_Lock, $GUI_HIDE)
-EndFunc   ;==>_CreateTab_ConfigHelper
+	; ==============================================================================
+
+	; ================= CỘT TRÁI (Tọa độ Game) =================
+	_CreateStyledGroup("Thiết Lập Tọa Độ Baccarat", 10, 70, 480, 275)
+	Local $x1 = 20, $y1 = 95
+
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Class cửa sổ Game:", $x1, $y1, 130, 20))
+	$g_hInput_WindowClass = GUICtrlCreateInput("", $x1 + 130, $y1 - 2, 330, 22)
+	_ArrayAdd($g_aConfigControls, $g_hInput_WindowClass)
+
+$y1 += 30
+	$g_hLbl_Coord_B = GUICtrlCreateLabel("Banker (X, Y):", $x1, $y1, 90, 20)
+	_ArrayAdd($g_aConfigControls, $g_hLbl_Coord_B)
+	$g_hInput_BankerX = GUICtrlCreateInput("", $x1 + 90, $y1 - 2, 50, 22)
+	$g_hInput_BankerY = GUICtrlCreateInput("", $x1 + 145, $y1 - 2, 50, 22)
+	$g_hButton_GetBankerPos = GUICtrlCreateButton("Lấy", $x1 + 200, $y1 - 3, 40, 24)
+
+	$g_hLbl_Coord_P = GUICtrlCreateLabel("Player (X, Y):", $x1 + 250, $y1, 90, 20)
+	_ArrayAdd($g_aConfigControls, $g_hLbl_Coord_P)
+	$g_hInput_PlayerX = GUICtrlCreateInput("", $x1 + 330, $y1 - 2, 50, 22)
+	$g_hInput_PlayerY = GUICtrlCreateInput("", $x1 + 385, $y1 - 2, 50, 22)
+	$g_hButton_GetPlayerPos = GUICtrlCreateButton("Lấy", $x1 + 440, $y1 - 3, 40, 24)
+
+	$y1 += 30
+	$g_hLbl_Coord_T = GUICtrlCreateLabel("Hòa/Tie (X, Y):", $x1, $y1, 90, 20)
+	_ArrayAdd($g_aConfigControls, $g_hLbl_Coord_T)
+	$g_hInput_TieX = GUICtrlCreateInput("", $x1 + 90, $y1 - 2, 50, 22)
+	$g_hInput_TieY = GUICtrlCreateInput("", $x1 + 145, $y1 - 2, 50, 22)
+	$g_hButton_GetTiePos = GUICtrlCreateButton("Lấy", $x1 + 200, $y1 - 3, 40, 24)
+
+	$y1 += 30
+	$g_hLbl_Color_B = GUICtrlCreateLabel("Màu B/P:", $x1, $y1, 60, 20)
+	_ArrayAdd($g_aConfigControls, $g_hLbl_Color_B)
+	$g_hInput_BankerColor = GUICtrlCreateInput("", $x1 + 65, $y1 - 2, 70, 22)
+	$g_hButton_GetBankerColor = GUICtrlCreateButton("Lấy B", $x1 + 140, $y1 - 3, 45, 24)
+	$g_hInput_PlayerColor = GUICtrlCreateInput("", $x1 + 195, $y1 - 2, 70, 22)
+	$g_hButton_GetPlayerColor = GUICtrlCreateButton("Lấy P", $x1 + 270, $y1 - 3, 45, 24)
+	$g_hInput_TieColor = GUICtrlCreateInput("", $x1 + 325, $y1 - 2, 70, 22)
+	$g_hButton_GetTieColor = GUICtrlCreateButton("Lấy T", $x1 + 400, $y1 - 3, 45, 24)
+
+	$y1 += 30
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Vùng quét KQ (X1,Y1 - X2,Y2):", $x1, $y1, 200, 20))
+	$g_hInput_Shade_Result = GUICtrlCreateInput("10", $x1 + 210, $y1 - 2, 30, 22)
+	$g_hButton_TestColor_Result = GUICtrlCreateButton("Test Màu KQ", $x1 + 250, $y1 - 3, 90, 24)
+
+	$y1 += 25
+	$g_hInput_ResultX1 = GUICtrlCreateInput("", $x1, $y1, 50, 22)
+	$g_hInput_ResultY1 = GUICtrlCreateInput("", $x1 + 55, $y1, 50, 22)
+	$g_hButton_GetResultTL = GUICtrlCreateButton("Lấy", $x1 + 110, $y1 - 1, 40, 24)
+	$g_hInput_ResultX2 = GUICtrlCreateInput("", $x1 + 160, $y1, 50, 22)
+	$g_hInput_ResultY2 = GUICtrlCreateInput("", $x1 + 215, $y1, 50, 22)
+	$g_hButton_GetResultBR = GUICtrlCreateButton("Lấy", $x1 + 270, $y1 - 1, 40, 24)
+	$g_hCheckbox_BaccaratLaser = GUICtrlCreateCheckbox("Quét Vùng KQ", $x1 + 320, $y1, 130, 20)
+
+	$y1 += 30
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Giờ Cược (X1,Y1 - X2,Y2):", $x1, $y1, 180, 20))
+	$g_hInput_BetTimeColor = GUICtrlCreateInput("", $x1 + 180, $y1 - 2, 70, 22)
+	$g_hButton_GetBetTimeColor = GUICtrlCreateButton("Màu", $x1 + 260, $y1 - 3, 40, 24)
+	$g_hInput_Shade_Timer = GUICtrlCreateInput("20", $x1 + 310, $y1 - 2, 30, 22)
+	$g_hButton_TestColor_Timer = GUICtrlCreateButton("Test GC", $x1 + 350, $y1 - 3, 70, 24)
+
+	$y1 += 25
+	$g_hInput_BetTimeX1 = GUICtrlCreateInput("", $x1, $y1, 50, 22)
+	$g_hInput_BetTimeY1 = GUICtrlCreateInput("", $x1 + 55, $y1, 50, 22)
+	$g_hButton_GetBetTimeTL = GUICtrlCreateButton("Lấy", $x1 + 110, $y1 - 1, 40, 24)
+	$g_hInput_BetTimeX2 = GUICtrlCreateInput("", $x1 + 160, $y1, 50, 22)
+	$g_hInput_BetTimeY2 = GUICtrlCreateInput("", $x1 + 215, $y1, 50, 22)
+	$g_hButton_GetBetTimeBR = GUICtrlCreateButton("Lấy", $x1 + 270, $y1 - 1, 40, 24)
+
+	; ================= CỘT TRÁI DƯỚI (Quản Lý Sảnh) =================
+	_CreateStyledGroup("Quản Lý Sảnh", 10, 355, 480, 60)
+	Local $x_prof = 20, $y_prof = 380
+	$g_hCombo_Profiles = GUICtrlCreateCombo("", $x_prof, $y_prof - 2, 180, 25, $CBS_DROPDOWNLIST)
+	Global $g_hButton_SaveNewProfile = GUICtrlCreateButton("💾 Lưu Sảnh Mới", $x_prof + 190, $y_prof - 4, 140, 26)
+	GUICtrlSetBkColor(-1, 0x0082FA)
+	GUICtrlSetColor(-1, 0xFFFFFF)
+	Global $g_hButton_DeleteProfile = GUICtrlCreateButton("❌ Xóa Sảnh", $x_prof + 340, $y_prof - 4, 100, 26)
+	GUICtrlSetBkColor(-1, 0xFF4141)
+	GUICtrlSetColor(-1, 0xFFFFFF)
+
+; ================= CỘT PHẢI (Chip & Xóc Đĩa VIP) =================
+	_CreateStyledGroup("Cấu Hình Chip Cược", 500, 70, 460, 185)
+	Local $x_chip = 510, $y_chip = 95
+	For $i = 0 To 4
+		$g_aCheckbox_ChipEnabled[$i] = GUICtrlCreateCheckbox("Chip " & ($i + 1), $x_chip, $y_chip, 60, 20)
+		_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Giá trị:", $x_chip + 70, $y_chip, 50, 20))
+		$g_aInput_ChipValue[$i] = GUICtrlCreateInput("", $x_chip + 120, $y_chip - 2, 80, 22)
+		_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("X, Y:", $x_chip + 210, $y_chip, 35, 20))
+		$g_aInput_ChipX[$i] = GUICtrlCreateInput("", $x_chip + 245, $y_chip - 2, 50, 22)
+		$g_aInput_ChipY[$i] = GUICtrlCreateInput("", $x_chip + 300, $y_chip - 2, 50, 22)
+		$g_aButton_GetChipPos[$i] = GUICtrlCreateButton("Lấy", $x_chip + 360, $y_chip - 3, 60, 24)
+		$y_chip += 28
+	Next
+
+	_CreateStyledGroup("Xóc Đĩa VIP (5 Hàng - Đổi Hạn Mức)", 500, 265, 460, 150)
+	Local $x_xd = 510, $y_xd = 285
+
+	$g_hCheckbox_XocDiaVIP = GUICtrlCreateCheckbox("🔥 BẬT XÓC ĐĨA VIP", $x_xd, $y_xd, 200, 20)
+	GUICtrlSetColor(-1, 0xFF0000)
+
+	$y_xd += 28
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("1. Nút Mở:", $x_xd, $y_xd, 60, 20))
+	$g_hInput_LimitBtnX = GUICtrlCreateInput("", $x_xd + 60, $y_xd - 2, 35, 22)
+	$g_hInput_LimitBtnY = GUICtrlCreateInput("", $x_xd + 95, $y_xd - 2, 35, 22)
+	$g_hButton_GetLimitBtn = GUICtrlCreateButton("Lấy", $x_xd + 130, $y_xd - 3, 35, 24)
+
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("2. Ô 10-500:", $x_xd + 175, $y_xd, 70, 20))
+	$g_hInput_Limit10_500X = GUICtrlCreateInput("", $x_xd + 245, $y_xd - 2, 35, 22)
+	$g_hInput_Limit10_500Y = GUICtrlCreateInput("", $x_xd + 280, $y_xd - 2, 35, 22)
+	$g_hButton_GetLimit10_500 = GUICtrlCreateButton("Lấy", $x_xd + 315, $y_xd - 3, 35, 24)
+
+	$y_xd += 28
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("3. Ô 20-50K:", $x_xd, $y_xd, 70, 20))
+	$g_hInput_Limit20_50KX = GUICtrlCreateInput("", $x_xd + 60, $y_xd - 2, 35, 22)
+	$g_hInput_Limit20_50KY = GUICtrlCreateInput("", $x_xd + 95, $y_xd - 2, 35, 22)
+	$g_hButton_GetLimit20_50K = GUICtrlCreateButton("Lấy", $x_xd + 130, $y_xd - 3, 35, 24)
+
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("4. Xác nhận:", $x_xd + 175, $y_xd, 70, 20))
+	$g_hInput_LimitConfirmX = GUICtrlCreateInput("", $x_xd + 245, $y_xd - 2, 35, 22)
+	$g_hInput_LimitConfirmY = GUICtrlCreateInput("", $x_xd + 280, $y_xd - 2, 35, 22)
+	$g_hButton_GetLimitConfirm = GUICtrlCreateButton("Lấy", $x_xd + 315, $y_xd - 3, 35, 24)
+
+; --- TẠO KHU VỰC MÔ PHỎNG TRONG PHÒNG BOSS (3 KIỂU QLV) ---
+	_CreateStyledGroup("Mô Phỏng Tài Chính (So sánh 3 kiểu QLV)", 500, 420, 460, 115)
+	Local $x_sim = 510, $y_sim = 445
+
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Số tay Test:", $x_sim, $y_sim, 70, 20))
+	$g_hInput_SimString = GUICtrlCreateInput("100000", $x_sim + 70, $y_sim - 2, 80, 22)
+	_ArrayAdd($g_aConfigControls, $g_hInput_SimString)
+
+	_ArrayAdd($g_aConfigControls, GUICtrlCreateLabel("Chọn QLV:", $x_sim + 160, $y_sim, 65, 20))
+	$g_hCombo_SimQLV = GUICtrlCreateCombo("1. Gấp thếp Đa tầng (Hệ số UI)", $x_sim + 225, $y_sim - 2, 215, 25, 0x0003) ; 0x0003 là khóa không cho gõ linh tinh
+GUICtrlSetData($g_hCombo_SimQLV, "2. D'Alembert (Tiến 1 Lùi 1)|3. Oscar's Grind (Bất tử)|4. SIÊU LAI TẠO (D'Alembert Đa Tầng)")
+_ArrayAdd($g_aConfigControls, $g_hCombo_SimQLV)
+
+	$y_sim += 35
+	$g_hBtn_RunSim = GUICtrlCreateButton("▶ CHẠY TEST RANDOM & SO SÁNH", $x_sim, $y_sim - 3, 440, 28)
+	GUICtrlSetBkColor($g_hBtn_RunSim, 0x33CC33)
+	GUICtrlSetFont($g_hBtn_RunSim, 9, 800)
+	_ArrayAdd($g_aConfigControls, $g_hBtn_RunSim)
+
+	Global $g_iTechTabEnd = GUICtrlCreateDummy()
+EndFunc
 ; ==================================================================================================
 ; --- CÁC HÀM XỬ LÝ SỰ KIỆN & TRẠNG THÁI ---
 ; ==================================================================================================
@@ -1375,7 +1409,6 @@ Func _PopulateProfileList()
 		EndIf
 	EndIf
 
-	; CHÚ Ý: Bắt buộc có dấu "|" ở đầu để lệnh GUICtrlSetData dọn sạch rác cũ trước khi nạp danh sách mới
 	Local $sProfileList = "|"
 
 	For $i = 1 To $aSectionNames[0]
@@ -1389,15 +1422,12 @@ Func _PopulateProfileList()
 		$sProfileList = StringTrimRight($sProfileList, 1)
 	EndIf
 
-	; Ghi nhớ tên sảnh đang chọn để set lại sau khi làm mới
 	Local $sCurrentMain = GUICtrlRead($g_hCombo_Profiles_Main)
 	Local $sCurrentConf = GUICtrlRead($g_hCombo_Profiles)
 
-	; Đổ dữ liệu sạch vào 2 Combo Box
 	GUICtrlSetData($g_hCombo_Profiles_Main, $sProfileList, $sCurrentMain)
 	GUICtrlSetData($g_hCombo_Profiles, $sProfileList, $sCurrentConf)
-EndFunc
-
+EndFunc   ;==>_PopulateProfileList
 Func _HandleProfileChange($hTriggeredCombo)
 	Local $sNewProfile = GUICtrlRead($hTriggeredCombo)
 	; Chống chạy lặp lại nếu đang ở đúng sảnh đó
@@ -1432,7 +1462,7 @@ Func _HandleProfileChange($hTriggeredCombo)
 	Local $sTP = GUICtrlRead($g_hInput_TakeProfit)
 	Local $sSL = GUICtrlRead($g_hInput_StopLoss)
 	_UpdateStatus("✅ Đã chuyển: [" & $sNewProfile & "] | Lãi " & $sTP & " / Lỗ " & $sSL)
-EndFunc
+EndFunc   ;==>_HandleProfileChange
 Func _CreateDefaultIniFile()
 	; 1. ÉP TẠO FILE INI CHUẨN UNICODE (Mã số 32 = UTF-16 LE) ĐỂ LƯU TIẾNG VIỆT CÓ DẤU
 	Local $hFile = FileOpen($g_sIniPath, 2 + 32)
@@ -1483,7 +1513,7 @@ Func _CreateDefaultIniFile()
 
 	; Cập nhật bộ nhớ UI
 	IniWrite($g_sIniPath, "UISettings", "LastProfile", "Sảnh PP Mẫu")
-EndFunc
+EndFunc   ;==>_CreateDefaultIniFile
 Func _LoadSettings()
 	If Not FileExists($g_sIniPath) Then _CreateDefaultIniFile()
 	_EnsureDefaultQLVExists()
@@ -1494,6 +1524,15 @@ Func _LoadSettings()
 	GUICtrlSetData($g_hInput_TakeProfit, IniRead($g_sIniPath, "Settings", "TakeProfit", "200.000"))
 	GUICtrlSetData($g_hInput_StopLoss, IniRead($g_sIniPath, "Settings", "StopLoss", "500.000"))
 	GUICtrlSetData($g_hInput_MouseSpeed, IniRead($g_sIniPath, "Settings", "MouseSpeed", "10"))
+; ĐỌC VÀ PHỤC HỒI TRẠNG THÁI CHẠM MỐC NGHỈ/DỪNG
+	Local $sCurrentProfile = GUICtrlRead($g_hCombo_Profiles_Main)
+	If $sCurrentProfile == "" Then $sCurrentProfile = "Settings"
+
+	GUICtrlSetState($g_hRadio_Action_Stop, IniRead($g_sIniPath, "Profile_" & $sCurrentProfile, "ActionStop", $GUI_CHECKED))
+	GUICtrlSetState($g_hRadio_Action_PauseMin, IniRead($g_sIniPath, "Profile_" & $sCurrentProfile, "ActionPauseMin", $GUI_UNCHECKED))
+	GUICtrlSetState($g_hRadio_Action_PauseHand, IniRead($g_sIniPath, "Profile_" & $sCurrentProfile, "ActionPauseHand", $GUI_UNCHECKED))
+	GUICtrlSetData($g_hInput_Action_PauseMin, IniRead($g_sIniPath, "Profile_" & $sCurrentProfile, "PauseMinVal", "15"))
+	GUICtrlSetData($g_hInput_Action_PauseHand, IniRead($g_sIniPath, "Profile_" & $sCurrentProfile, "PauseHandVal", "5"))
 
 	; --- Tải trạng thái Đánh Nối Đuôi ---
 	Local $iContMode = IniRead($g_sIniPath, "Settings", "ContinuousMode", 0)
@@ -1514,7 +1553,13 @@ Func _LoadSettings()
 	If $g_sMyTableID <> "" Then
 		$sProfileToUse = StringReplace($g_sMyTableID, "B", "Ban ")
 	Else
-		$sProfileToUse = IniRead($g_sIniPath, "UISettings", "LastProfile", "Ban 1")
+		; 1. Cố gắng đọc trí nhớ từ chuẩn mới (Settings)
+		$sProfileToUse = IniRead($g_sIniPath, "Settings", "LastProfile", "")
+
+		; 2. Nếu chuẩn mới trống trơn, tự động lùi về chuẩn cũ (UISettings) để khôi phục dữ liệu cho sếp
+		If $sProfileToUse == "" Then
+			$sProfileToUse = IniRead($g_sIniPath, "UISettings", "LastProfile", "")
+		EndIf
 	EndIf
 
 	GUICtrlSetData($g_hCombo_Profiles_Main, $sProfileToUse)
@@ -1525,7 +1570,6 @@ Func _LoadSettings()
 		$g_sCurrentLoadedProfile = $sProfileToUse
 		_GetAndValidateInputs()
 	EndIf
-
 	; Lấy tên cấu hình đang chọn để hiển thị
 	Local $sCurrentProfile = GUICtrlRead($g_hCombo_Profiles_Main)
 	If $sCurrentProfile = "" Then $sCurrentProfile = "Mặc định"
@@ -1553,182 +1597,33 @@ Func _LoadSettings()
 	_PopulateFormulaLibrary()
 EndFunc   ;==>_LoadSettings
 
-; =====================================================================
-; NGÃ BA ĐƯỜNG: CHUYỂN HƯỚNG TÁCH BIỆT 100% GAME LONG LONG & BACCARAT
-; =====================================================================
 Func _StartProcess()
-	Local $sSelectedProfile = GUICtrlRead($g_hCombo_Profiles_Main)
-	If $sSelectedProfile = "" Then
-		MsgBox(16, "Lỗi Cấu Hình", "Vui lòng chọn một cấu hình sảnh hợp lệ từ danh sách.")
-		_SetControlsState(True)
-		Return
-	EndIf
-
+	; ---> ÉP ĐỒNG BỘ SỐ DƯ & CÀI ĐẶT TRƯỚC KHI CHẠY <---
 	If Not _GetAndValidateInputs() Then
-		_SetControlsState(True)
-		Return
+		Return ; Dừng ngay không cho chạy nếu sếp lỡ nhập cược = 0 hoặc lỗi
 	EndIf
 
-	; ---------------------------------------------------------
-	; BỘ LỌC CHUYỂN HƯỚNG: NẾU LÀ LONG LONG THÌ QUA NHÀ MỚI CHƠI
-	; ---------------------------------------------------------
-	If GUICtrlRead($g_hCombo_GameMode) == "Long Long (Evo)" Then
-		_StartProcess_LongLong()
-		Return ; Kết thúc tại đây, không cho dính líu tới Baccarat
-	EndIf
-
-	; =========================================================
-	; TỪ ĐÂY TRỞ XUỐNG LÀ BACCARAT CŨ NGUYÊN BẢN (KHÔNG ĐỤNG CHẠM)
-	; =========================================================
 	_ApplyCurrentSettings()
 	$g_hSessionTimer = TimerInit()
 	_SendActivityLog("Start")
+
+	$g_bIsRunning = True
+	_SetControlsState(False)
 
 	ReDim $g_aDisplayHistory[0]
 	$g_iHistoryCutoffIndex = 0
 	$g_iTotalBanker = 0
 	$g_iTotalPlayer = 0
 	$g_iTotalTie = 0
-	_RedrawHistory()
-	_UpdateBPTTotalsLabels()
-	_UpdateTotalHandsLabel()
-
-	$g_fTotalProfit = 0.0
-	$g_fPeakProfit = 0.0
-	$g_bIsTrailingMode = False
-
-	If GUICtrlRead($g_hCheckbox_VirtualBet) = $GUI_CHECKED Then
-		$g_bIsRealBetting = False
-		$g_iVirtualLosses = 0
-		_UpdateStatus("🛡️ ĐÁNH NHÁP BẬT: Tool sẽ giả vờ đánh, đợi thua 3 tay mới vào tiền thật!")
-	Else
-		$g_bIsRealBetting = True
-	EndIf
-
-	$g_bIsRunning = True
-	_SetControlsState(False)
-	_UpdateStatus(">>> KHỞI ĐỘNG NGAY: Bắt đầu dò tín hiệu để đánh luôn (Baccarat)!")
-
-	_UpdateStatus("⏳ [BƯỚC 1] Đang tìm bàn / Chờ tín hiệu mồi đầu tiên...")
-	While $g_bIsRunning
-		_ProcessGUIMessages()
-		Local $sInitResult = _ScanAreaForResult()
-		If $sInitResult <> "" Then
-			_UpdateStatus("✅ Đã kết nối vào bàn: " & $sInitResult)
-			_ProcessObservation($sInitResult)
-			ExitLoop
-		EndIf
-		Sleep(200)
-	WEnd
-
-	While $g_bIsRunning
-		_ProcessGUIMessages()
-
-		If _CheckProfitLossTargets() Then ExitLoop
-
-		_WaitUntilResultDisappears()
-		If Not $g_bIsRunning Then ExitLoop
-
-		Local $aAction = _DecideNextAction()
-		Local $sBetOn = $aAction[1]
-		Local $iBetUnits = $aAction[2]
-
-		If $aAction[0] = "BET" Then
-			If $g_iCapitalLevel == 0 Then
-				If GUICtrlRead($g_hCheckbox_LaiKepVIP) = $GUI_CHECKED Then
-					Local $fPercent = Number(GUICtrlRead($g_hInput_LaiKepPercent))
-					If $fPercent <= 0 Then $fPercent = 5
-					Local $fCurrentBalance = $g_fInitialCapital + $g_fTotalProfit
-					$g_fCurrentCycleBaseBet = $fCurrentBalance * ($fPercent / 100)
-				Else
-					$g_fCurrentCycleBaseBet = $g_fInitialBet
-				EndIf
-			EndIf
-
-			$g_fCurrentBet = $g_fCurrentCycleBaseBet * $iBetUnits
-			_UpdateStatus(StringFormat("🔥 Lệnh %d (Hệ số x%s): Đánh %s đ", $g_iCapitalLevel, $iBetUnits, _FormatNumber($g_fCurrentBet)))
-
-			If _WaitForBettingTime_Safe() Then
-				If _PerformBet($sBetOn, $g_fCurrentBet) Then
-					_UpdateStatus("✅ Đã đặt cược! Đang chờ mở bài...")
-				EndIf
-			Else
-				_UpdateStatus("⛔ Bỏ lỡ giờ cược -> Hủy lệnh này, quan sát ván sau.")
-				$g_sLastBetOn = ""
-			EndIf
-		Else
-			Local $iCount = UBound($g_aDisplayHistory)
-			_UpdateStatus("👁️ Quan sát (" & $iCount & " tay) - Chờ cơ hội...")
-		EndIf
-
-		Local $sNewResult = _WaitForNextHandResult_TimeOut()
-		If $sNewResult == "STOPPED" Then ExitLoop
-
-		If $g_sLastBetOn <> "" Then
-			_ProcessBetOutcome($sNewResult, $g_sLastBetOn)
-			$g_sLastBetOn = ""
-		Else
-			_ProcessObservation($sNewResult)
-		EndIf
-		Sleep(200)
-	WEnd
-EndFunc   ;==>_StartProcess
-Func _IsBetTimeOpen()
-	Local $hWnd = $g_hTargetGameWin
-	If $hWnd = 0 Or Not WinExists($hWnd) Then Return False
-
-	; --- 1. LẤY TỌA ĐỘ VÀ TỰ ĐỘNG NẮN LẠI NẾU SẾP LẤY NGƯỢC ---
-	Local $iX1 = $g_aBetTimeIndicatorArea[0]
-	Local $iY1 = $g_aBetTimeIndicatorArea[1]
-	Local $iX2 = $g_aBetTimeIndicatorArea[2]
-	Local $iY2 = $g_aBetTimeIndicatorArea[3]
-
-	Local $iLeft = $iX1
-	Local $iRight = $iX2
-	If $iX1 > $iX2 Then
-		$iLeft = $iX2
-		$iRight = $iX1
-	EndIf
-
-	Local $iTop = $iY1
-	Local $iBottom = $iY2
-	If $iY1 > $iY2 Then
-		$iTop = $iY2
-		$iBottom = $iY1
-	EndIf
-
-	; --- 2. ÉP DUNG SAI CAO CHỐNG LÓA VIDEO LIVESTREAM ---
-	Local $iTolerance = Number(GUICtrlRead($g_hInput_Shade_Timer))
-	If $iTolerance < 45 Then $iTolerance = 45 ; Tự động nâng lên 45 để bắt dính màu đang chớp
-
-	; --- 3. QUÉT TUYỆT ĐỐI TRÊN MÀN HÌNH ---
-	Local $aSearch = PixelSearch($iLeft, $iTop, $iRight, $iBottom, $g_iBetTimeIndicatorColor, $iTolerance)
-
-	Return IsArray($aSearch)
-EndFunc
-; =====================================================================
-; MODULE ĐỘC LẬP DÀNH RIÊNG CHO LONG LONG EVO (Chuẩn Gấp Thếp 100%)
-; =====================================================================
-Func _StartProcess_LongLong()
-	_ApplyCurrentSettings()
-	_UpdateStatus("🚀 KHỞI ĐỘNG HỆ THỐNG ĐỘC LẬP: LONG LONG (EVO)")
-	$g_bIsRunning = True
-	_SetControlsState(False)
-
-	$g_iCapitalLevel = 0
 	$g_fTotalProfit = 0
-	$g_iLastActiveRuleIndex = -1 ; Reset bộ nhớ dòng công thức
-	ReDim $g_aDisplayHistory[0]
-
-	; ---> FIX: RESET BỘ ĐẾM SỐ VÁN VÀ B/P/T TRƯỚC KHI CHẠY <---
-	$g_iTotalBanker = 0
-	$g_iTotalPlayer = 0
-	$g_iTotalTie = 0
-	_UpdateBPTTotalsLabels()
-	_UpdateTotalHandsLabel()
-	; ----------------------------------------------------------
+	$g_iCapitalLevel = 0
+	$g_iCustomSeqStep = 0
+	$g_iLastActiveRuleIndex = -1
+	$g_iTableProfit_Units = 0
 
 	_RedrawHistory()
+	_UpdateBPTTotalsLabels()
+	_UpdateTotalHandsLabel()
 
 	Local $hGameWin = $g_hTargetGameWin
 	If $hGameWin = 0 Or Not WinExists($hGameWin) Then
@@ -1736,310 +1631,308 @@ Func _StartProcess_LongLong()
 		$g_hTargetGameWin = $hGameWin
 	EndIf
 
-	Local $sPendingBetTarget = ""
-	Local $fPendingBetAmount = 0
-	Local $aPendingQLV
+	Local $bIsMultiTable = False
+	If IsDeclared("g_hCheckbox_DuKichDaBan") Then
+		If GUICtrlRead($g_hCheckbox_DuKichDaBan) == $GUI_CHECKED Then $bIsMultiTable = True
+	EndIf
 
-	_UpdateStatus("⏳ BƯỚC 1: Đang chụp nguyên khối bảng cầu để làm mốc...")
-	Local $sLastStableBoard = _ScanEvoLongLongBoard_Full()
+	; =========================================================================
+	; [CHẾ ĐỘ 1]: CHẠY TUẦN TỰ 12 BÀN (DÙNG LASER VÀ SĂN BÀN MỚI)
+	; =========================================================================
+	If $bIsMultiTable Then
+		$g_iCurrentTableIndex = 0
+		$g_fTableProfit_RealUnits = 0.0
+
+		If IsDeclared("g_hCheckbox_SanBanMoi") And GUICtrlRead($g_hCheckbox_SanBanMoi) == $GUI_CHECKED Then
+			_HuntForNewShoeTable()
+		Else
+			_CalculateAndSetTableCoords(0)
+			_UpdateStatus("🚀 BẮT ĐẦU DU KÍCH: Khóa mục tiêu Bàn 1...")
+		EndIf
+
+		While $g_bIsRunning
+			_ProcessGUIMessages()
+			If _CheckProfitLossTargets() Then ExitLoop
+
+			Local $fTargetWinUnits = Number(GUICtrlRead($g_hInput_DuKich_WinTable))
+			Local $fTargetLossUnits = -1 * Number(GUICtrlRead($g_hInput_DuKich_LossTable))
+
+			If $g_fTableProfit_RealUnits >= $fTargetWinUnits Or $g_fTableProfit_RealUnits <= $fTargetLossUnits Then
+				Local $sReason = ($g_fTableProfit_RealUnits >= $fTargetWinUnits) ? "CHỐT LỜI" : "CẮT LỖ"
+				_UpdateStatus("🔄 " & $sReason & " Bàn " & ($g_iCurrentTableIndex + 1) & " (Đạt " & $g_fTableProfit_RealUnits & " Lót thực). Nhảy bàn...")
+
+				If IsDeclared("g_hCheckbox_SanBanMoi") And GUICtrlRead($g_hCheckbox_SanBanMoi) == $GUI_CHECKED Then
+					_HuntForNewShoeTable()
+				Else
+					$g_iCurrentTableIndex += 1
+					If $g_iCurrentTableIndex > 11 Then
+						Local $iRestMins = Number(GUICtrlRead($g_hInput_DuKich_RestTime))
+						_UpdateStatus("💤 Đã hoàn tất 12 bàn! Tool ngủ đông " & $iRestMins & " phút...")
+						Sleep($iRestMins * 60000)
+						$g_iCurrentTableIndex = 0
+						_UpdateStatus("🚀 Hết giờ nghỉ! Tái khởi động vòng 12 bàn mới...")
+					EndIf
+					_CalculateAndSetTableCoords($g_iCurrentTableIndex)
+
+					ReDim $g_aDisplayHistory[0]
+					$g_iHistoryCutoffIndex = 0
+					$g_iCapitalLevel = 0
+					$g_iLastActiveRuleIndex = -1
+					$g_fTableProfit_RealUnits = 0.0
+					_RedrawHistory()
+				EndIf
+				ContinueLoop
+			EndIf
+
+			Local $sNewResult = _WaitPopupAppear_Laser()
+			If $sNewResult == "" Then ContinueLoop
+			_UpdateStatus("⚡ Vừa ra: [" & $sNewResult & "]. Đang tính toán...")
+
+			If $g_sLastBetOn <> "" Then
+				_ProcessBetOutcome($sNewResult, $g_sLastBetOn)
+				$g_sLastBetOn = ""
+			Else
+				_ProcessObservation($sNewResult)
+			EndIf
+
+			Local $aAction = _DecideNextAction()
+
+			If $aAction[0] == "BET" Then
+				Local $sBetOn = $aAction[1]
+				$g_fCurrentBet = $g_fInitialBet * $aAction[2]
+
+				_UpdateStatus("🔥 Lệnh " & $g_iCapitalLevel & ": Chuẩn bị đánh " & $sBetOn & ". Đợi đèn xanh...")
+				Local $bTimerFound = False
+				Local $iWaitTimer = TimerInit()
+				While $g_bIsRunning
+					If _IsBetTimeOpen() Then
+						$bTimerFound = True
+						ExitLoop
+					EndIf
+					_ProcessGUIMessages()
+					Sleep(10)
+					If TimerDiff($iWaitTimer) > 25000 Then ExitLoop
+				WEnd
+
+				If $g_bIsRunning And $bTimerFound Then
+					_PerformBet($sBetOn, $g_fCurrentBet)
+					_UpdateStatus("✅ Đã đặt cược! Đang chờ kết quả...")
+				Else
+					_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
+				EndIf
+			Else
+				_WaitPopupDisappear_Laser()
+			EndIf
+		WEnd
+		_StopProcess()
+		Return ; Xong chế độ Du kích là thoát luôn, không chạy xuống dưới
+	EndIf
+
+; =========================================================================
+	; [CHẾ ĐỘ 2]: XÓC ĐĨA VIP - QUÉT POPUP LASER (Đã fix truyền sai tiền & dịch C/L)
+	; =========================================================================
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		_UpdateStatus("🚀 XÓC ĐĨA VIP: Khóa tia Laser vào giữa màn hình chờ Popup...")
+		While $g_bIsRunning
+			_ProcessGUIMessages()
+			If _CheckProfitLossTargets() Then ExitLoop
+
+			Local $sNewResult = _WaitPopupAppear_Laser()
+			If $sNewResult == "" Then ContinueLoop
+
+			; DỊCH TÍN HIỆU TỪ B/P SANG C/L ĐỂ ĐỒNG BỘ GIAO DIỆN XÓC ĐĨA
+			If $sNewResult == "B" Then $sNewResult = "C"
+			If $sNewResult == "P" Then $sNewResult = "L"
+			If $sNewResult == "T" Then ContinueLoop ; Xóc đĩa không lấy hòa
+
+			_UpdateStatus("⚡ Tia Laser chộp được: [" & $sNewResult & "]. Đang phân tích 5 Hàng...")
+
+			If $g_sLastBetOn <> "" Then
+				_ProcessBetOutcome($sNewResult, $g_sLastBetOn)
+				$g_sLastBetOn = ""
+			Else
+				_ProcessObservation($sNewResult)
+			EndIf
+
+			Local $aAction = _DecideNextAction()
+			If $aAction[0] == "BET" Then
+				Local $sBetOn = $aAction[1]
+				$g_fCurrentBet = $aAction[2] ; CHỈ LẤY ĐÚNG SỐ TIỀN THỰC TẾ TỪ BẢNG NỢ, KHÔNG NHÂN THÊM GÌ NỮA!
+
+				Local $bTimerFound = False
+				Local $iWaitTimer = TimerInit()
+				While $g_bIsRunning
+					If _IsBetTimeOpen() Then
+						$bTimerFound = True
+						ExitLoop
+					EndIf
+					_ProcessGUIMessages()
+					Sleep(20)
+					If TimerDiff($iWaitTimer) > 25000 Then ExitLoop
+				WEnd
+
+				If $g_bIsRunning And $bTimerFound Then
+					_PerformBet($sBetOn, $g_fCurrentBet)
+				Else
+					_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
+				EndIf
+			EndIf
+
+			_WaitPopupDisappear_Laser()
+		WEnd
+		_StopProcess()
+		Return ; Xong chế độ Xóc đĩa là thoát, không chạy Baccarat
+	EndIf
+	; =========================================================================
+	; [CHẾ ĐỘ 3]: BACCARAT QUÉT POPUP LASER (BỎ BẢNG KHỐI)
+	; =========================================================================
+	If IsDeclared("g_hCheckbox_BaccaratLaser") And GUICtrlRead($g_hCheckbox_BaccaratLaser) == $GUI_CHECKED Then
+		_UpdateStatus("🚀 BACCARAT: Khóa tia Laser rình Popup KQ...")
+		While $g_bIsRunning
+			_ProcessGUIMessages()
+			If _CheckProfitLossTargets() Then ExitLoop
+
+			Local $sNewResult = _WaitPopupAppear_Laser()
+			If $sNewResult == "" Then ContinueLoop
+
+			_UpdateStatus("⚡ Tia Laser chộp được: [" & $sNewResult & "]. Phân tích...")
+
+			If $g_sLastBetOn <> "" Then
+				_ProcessBetOutcome($sNewResult, $g_sLastBetOn)
+				$g_sLastBetOn = ""
+			Else
+				_ProcessObservation($sNewResult)
+			EndIf
+
+			Local $aAction = _DecideNextAction()
+			If $aAction[0] == "BET" Then
+				Local $sBetOn = $aAction[1]
+				Local $iBetUnits = $aAction[2]
+				$g_fCurrentBet = $g_fInitialBet * $iBetUnits ; Lệnh này là cược Unit (Lót) nên phải nhân tiền
+				_UpdateStatus("🔥 Lệnh " & $g_iCapitalLevel & ": Đánh " & $sBetOn & ". Chờ Giờ Cược...")
+
+				Local $bTimerFound = False
+				Local $iWaitTimer = TimerInit()
+				While $g_bIsRunning
+					If _IsBetTimeOpen() Then
+						$bTimerFound = True
+						ExitLoop
+					EndIf
+					_ProcessGUIMessages()
+					Sleep(20)
+					If TimerDiff($iWaitTimer) > 40000 Then ExitLoop
+				WEnd
+
+				If $g_bIsRunning And $bTimerFound Then
+					_PerformBet($sBetOn, $g_fCurrentBet)
+				Else
+					_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
+				EndIf
+			EndIf
+
+			_WaitPopupDisappear_Laser()
+		WEnd
+		_StopProcess()
+		Return ; Xong Baccarat Laser là thoát, không chạy bảng khối
+	EndIf
+
+	; =========================================================================
+	; [CHẾ ĐỘ 4 - MẶC ĐỊNH CŨ]: CHẠY 1 BÀN (QUÉT BẢNG KHỐI VẠN NĂNG)
+	; =========================================================================
+	_UpdateStatus("⏳ Đang chụp nguyên khối bảng cầu để làm mốc...")
+	Local $sLastStableBoard = _ScanUniversalBeadPlate()
+
+	If StringLen($sLastStableBoard) > 0 Then
+		Local $aChars = StringSplit($sLastStableBoard, "")
+		For $i = 1 To $aChars[0]
+			_ArrayAdd($g_aDisplayHistory, $aChars[$i])
+			_UpdateBPTTotals($aChars[$i])
+		Next
+		_UpdateTotalHandsLabel()
+		_RedrawHistory()
+		_UpdateStatus("✅ Đã nạp " & StringLen($sLastStableBoard) & " ván! Bắt đầu rình...")
+	EndIf
 
 	While $g_bIsRunning
 		_ProcessGUIMessages()
 		If _CheckProfitLossTargets() Then ExitLoop
 
-		; --- 1. QUÉT KHỐI BẢNG CẦU LIÊN TỤC ---
-		Local $sCurrentBoard = _ScanEvoLongLongBoard_Full()
+		Local $sCurrentBoard = _ScanUniversalBeadPlate()
+		If $sCurrentBoard == "" Then
+			Sleep(50)
+			ContinueLoop
+		EndIf
 
-		; --- 2. XỬ LÝ BIẾN ĐỘNG BẢNG CẦU ---
-		If $sCurrentBoard <> $sLastStableBoard And StringLen($sCurrentBoard) > 0 Then
-
+		If $sCurrentBoard <> $sLastStableBoard Then
 			Local $iLenCur = StringLen($sCurrentBoard)
 			Local $iLenLast = StringLen($sLastStableBoard)
 
 			If $iLenCur < ($iLenLast - 5) Then
 				$sLastStableBoard = $sCurrentBoard
+				ReDim $g_aDisplayHistory[0]
+				$g_iHistoryCutoffIndex = 0
+				$g_iTotalBanker = 0
+				$g_iTotalPlayer = 0
+				$g_iTotalTie = 0
 				$g_iCapitalLevel = 0
+				$g_iCustomSeqStep = 0
 				$g_iLastActiveRuleIndex = -1
-				$sPendingBetTarget = ""
-				$fPendingBetAmount = 0
-				_UpdateStatus("🔄 Dealer đổi hộp bài mới! Reset chu kỳ.")
+				_RedrawHistory()
+				_UpdateBPTTotalsLabels()
+				_UpdateTotalHandsLabel()
+				_UpdateStatus("🔄 Dealer đổi hộp bài mới! Đã dọn sạch bảng.")
 				Sleep(2000)
 				ContinueLoop
 			EndIf
 
 			If $iLenCur < $iLenLast Then
+				Sleep(50)
 				ContinueLoop
-			ElseIf $iLenCur == $iLenLast Then
-				If $iLenCur > 100 And StringRight($sLastStableBoard, $iLenLast - 1) == StringLeft($sCurrentBoard, $iLenCur - 1) Then
-					; Bảng đầy đẩy sang trái -> Hợp lệ
-				Else
-					ContinueLoop ; Lóa màu -> Bỏ qua
-				EndIf
 			EndIf
 
-; --- 3. GHI NHẬN KẾT QUẢ VÀ IN CHỚP NHOÁNG LÊN UI ---
 			Local $sNewResult = StringRight($sCurrentBoard, 1)
 			$sLastStableBoard = $sCurrentBoard
 
-			_ArrayAdd($g_aDisplayHistory, $sNewResult)
-			If UBound($g_aDisplayHistory) > 120 Then _ArrayDelete($g_aDisplayHistory, 0)
+			If $g_sLastBetOn <> "" Then
+				_ProcessBetOutcome($sNewResult, $g_sLastBetOn)
+				$g_sLastBetOn = ""
+			Else
+				_ProcessObservation($sNewResult)
+			EndIf
 
-			; ---> BỔ SUNG LỆNH ĐẾM ĐỎ/VÀNG/HÒA Ở ĐÂY <---
-			_UpdateBPTTotals($sNewResult)
-			_UpdateTotalHandsLabel()
-
-			_RedrawHistory()
 			_ProcessGUIMessages()
-; --- 4. TÍNH TOÁN LÃI LỖ + CẬP NHẬT QLV THEO CHECKBOX ---
-			If $sPendingBetTarget <> "" Then
-				Local $bSepQLV = BitAND(GUICtrlRead($g_hCheckbox_SeparateQLV), $GUI_CHECKED)
-				Local $bContinuous = BitAND(GUICtrlRead($g_hCheckbox_ContinuousMode), $GUI_CHECKED)
-				Local $bReverse = BitAND(GUICtrlRead($g_hCheckbox_ReverseLogic), $GUI_CHECKED)
+			_UpdateStatus("⚡ Vừa ra: [" & $sNewResult & "]. Phân tích...")
 
-				Local $iCurrentLvl = $g_iCapitalLevel
-				If $bSepQLV And $g_iLastActiveRuleIndex > -1 Then $iCurrentLvl = $g_aRuleLevels[$g_iLastActiveRuleIndex]
-				Local $aQLV = _GetQLV_Params($iCurrentLvl)
-				Local $iSavedIndex = $g_iLastActiveRuleIndex
+			Local $aAction = _DecideNextAction()
+			If $aAction[0] == "BET" Then
+				Local $sBetOn = $aAction[1]
+				Local $iBetUnits = $aAction[2]
+				$g_fCurrentBet = $g_fInitialBet * $iBetUnits
+				_UpdateStatus("🔥 Lệnh " & $g_iCapitalLevel & ": Đánh " & $sBetOn & ". Chờ Giờ Cược...")
 
-				Local $fProfitChange = 0
-				Local $bIsWin = False
-				Local $bIsLoss = False
+				Local $bTimerFound = False
+				Local $iWaitTimer = TimerInit()
+				While $g_bIsRunning
+					If _IsBetTimeOpen() Then
+						$bTimerFound = True
+						ExitLoop
+					EndIf
+					_ProcessGUIMessages()
+					Sleep(20)
+					If TimerDiff($iWaitTimer) > 40000 Then ExitLoop
+				WEnd
 
-				; ---> TÍNH TIỀN CHUẨN TỶ LỆ LONG LONG (EVO) <---
-				If $sPendingBetTarget == "1" Then ; Đánh Đỏ + Hai Màu (Combo)
-					If $sNewResult == "D" Or $sNewResult == "T" Then
-						$fProfitChange = ($fPendingBetAmount * 0.9)
-						$bIsWin = True
-					Else
-						$fProfitChange = -($fPendingBetAmount * 3)
-						$bIsLoss = True
-					EndIf
-				ElseIf $sPendingBetTarget == "2" Then ; Đánh Vàng + Hai Màu (Combo)
-					If $sNewResult == "V" Or $sNewResult == "T" Then
-						$fProfitChange = ($fPendingBetAmount * 0.9)
-						$bIsWin = True
-					Else
-						$fProfitChange = -($fPendingBetAmount * 3)
-						$bIsLoss = True
-					EndIf
-				ElseIf $sPendingBetTarget == "D" Or $sPendingBetTarget == "B" Then
-					If $sNewResult == "D" Or $sNewResult == "B" Then
-						$fProfitChange = $fPendingBetAmount * 2.90 ; Đỏ ăn 2.90
-						$bIsWin = True
-					Else
-						$fProfitChange = -$fPendingBetAmount ; Thua sạch
-						$bIsLoss = True
-					EndIf
-				ElseIf $sPendingBetTarget == "V" Or $sPendingBetTarget == "P" Then
-					If $sNewResult == "V" Or $sNewResult == "P" Then
-						$fProfitChange = $fPendingBetAmount * 2.90 ; Vàng ăn 2.90
-						$bIsWin = True
-					Else
-						$fProfitChange = -$fPendingBetAmount ; Thua sạch
-						$bIsLoss = True
-					EndIf
-				ElseIf $sPendingBetTarget == "T" Or $sPendingBetTarget == "M" Then
-					If $sNewResult == "T" Or $sNewResult == "M" Then
-						$fProfitChange = $fPendingBetAmount * 0.95 ; Hai màu ăn 0.95
-						$bIsWin = True
-					Else
-						$fProfitChange = -$fPendingBetAmount ; Thua sạch
-						$bIsLoss = True
-					EndIf
-				EndIf
-
-				; Xử lý luồng Thắng/Thua tổng hợp
-				If $bIsWin Then
-					$g_fTotalProfit += $fProfitChange
-					$iCurrentLvl = $aQLV[2] ; Thắng
-					_UpdateStatus("🟢 HÚP! Cộng " & _FormatNumber($fProfitChange) & "đ.")
-
-					If $bReverse Then
-						If $g_iLastActiveRuleIndex > -1 Then $g_iCustomSeqStep += 1
-					Else
-						$g_iLastActiveRuleIndex = -1
-						$g_iCustomSeqStep = 0
-						$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-					EndIf
-				ElseIf $bIsLoss Then
-					$g_fTotalProfit += $fProfitChange
-					$iCurrentLvl = $aQLV[3] ; Thua
-					_UpdateStatus("🔴 GÃY! Trừ " & _FormatNumber(Abs($fProfitChange)) & "đ. Lên lệnh " & $iCurrentLvl)
-
-					If $bReverse Then
-						$g_iLastActiveRuleIndex = -1
-						$g_iCustomSeqStep = 0
-						$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-					Else
-						If $bContinuous Then
-							$g_iCustomSeqStep += 1
-						Else
-							$g_iLastActiveRuleIndex = -1
-							$g_iCustomSeqStep = 0
-							$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-						EndIf
-					EndIf
-				EndIf
-
-				If $bSepQLV And $iSavedIndex > -1 Then
-					$g_aRuleLevels[$iSavedIndex] = $iCurrentLvl
+				If $g_bIsRunning And $bTimerFound Then
+					_PerformBet($sBetOn, $g_fCurrentBet)
 				Else
-					$g_iCapitalLevel = $iCurrentLvl
+					_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
 				EndIf
-
-				_UpdateDailyStats($fPendingBetAmount, $fProfitChange)
-				Local $fLiveBalance = $g_fInitialCapital + $g_fTotalProfit
-				Local $fLiveVol = Number(IniRead(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), "0"))
-				_SyncLiveDashboard($fLiveBalance, $g_fTotalProfit, $fLiveVol)
-
-				$sPendingBetTarget = ""
-				$fPendingBetAmount = 0
-			EndIf
-
-			; --- 5. ĐỌC CÔNG THỨC KIỂM TRA ĐIỀU KIỆN ---
-			Local $sHistRaw = _ArrayToString($g_aDisplayHistory, "")
-			Local $sHistNoTie = StringReplace($sHistRaw, "T", "")
-			Local $bShouldBet = False
-			Local $sTargetBet = ""
-
-			Local $sCustomRules = StringStripWS(GUICtrlRead($g_hInput_CustomRules), 3)
-			Local $aRules = StringSplit(StringReplace($sCustomRules, @CRLF, @LF), @LF)
-
-			; LOGIC MỚI: Đọc từng bước (Seq Step) cho chuỗi cược dài
-			If $g_iLastActiveRuleIndex > -1 And $g_iLastActiveRuleIndex < $aRules[0] Then
-				Local $sLine = StringStripWS($aRules[$g_iLastActiveRuleIndex + 1], 8)
-				Local $aParts = StringSplit($sLine, "-")
-				If $aParts[0] >= 2 Then
-					Local $sBetSeq = StringStripWS($aParts[2], 8)
-					If $g_iCustomSeqStep <= StringLen($sBetSeq) And $g_iCustomSeqStep > 0 Then
-						$bShouldBet = True
-						$sTargetBet = StringMid($sBetSeq, $g_iCustomSeqStep, 1)
-					Else
-						$g_iLastActiveRuleIndex = -1
-						$g_iCustomSeqStep = 0
-					EndIf
-				EndIf
-			Else
-				; NẾU KHÔNG NỐI ĐUÔI, TÌM TÍN HIỆU CẦU MỚI
-				For $i = 1 To $aRules[0]
-					Local $sLine = StringStripWS($aRules[$i], 8)
-					If $sLine = "" Then ContinueLoop
-					Local $aParts = StringSplit($sLine, "-")
-					If $aParts[0] >= 2 Then
-						Local $sWaitSig = StringStripWS($aParts[1], 8)
-						Local $sAction = StringStripWS($aParts[2], 8)
-
-						; TRÍ TUỆ NHÂN TẠO LỌC HAI MÀU (T)
-						Local $sCompareHist = $sHistRaw
-						If Not StringInStr($sWaitSig, "T") And Not StringInStr($sWaitSig, "M") Then
-							$sCompareHist = $sHistNoTie ; Nếu công thức khách không có chữ T/M, tự động bỏ qua T/M trong lịch sử
-						EndIf
-
-						If StringRight($sCompareHist, StringLen($sWaitSig)) == $sWaitSig Then
-							$bShouldBet = True
-							$sTargetBet = StringMid($sAction, 1, 1)
-							$g_iLastActiveRuleIndex = $i - 1
-							$g_iCustomSeqStep = 1
-							ExitLoop
-						EndIf
-					EndIf
-				Next
-			EndIf
-
-			; --- 6. RÌNH XANH LÁ VÀ VÀO TIỀN ---
-			If $bShouldBet Then
-				Local $bSepQLV = (GUICtrlRead($g_hCheckbox_SeparateQLV) == $GUI_CHECKED)
-				Local $iTargetLevel = $g_iCapitalLevel
-				If $bSepQLV And $g_iLastActiveRuleIndex > -1 Then $iTargetLevel = $g_aRuleLevels[$g_iLastActiveRuleIndex]
-
-				$aPendingQLV = _GetQLV_Params($iTargetLevel)
-				Local $iBetUnits = $aPendingQLV[1]
-
-				Local $fBaseBetForThisTurn = $g_fInitialBet
-				If BitAND(GUICtrlRead($g_hCheckbox_LaiKepVIP), $GUI_CHECKED) Then
-					Local $fPercent = Number(GUICtrlRead($g_hInput_LaiKepPercent))
-					If $fPercent <= 0 Then $fPercent = 1
-					Local $fCurrentBalance = $g_fInitialCapital + $g_fTotalProfit
-					$fBaseBetForThisTurn = $fCurrentBalance * ($fPercent / 100)
-				EndIf
-
-				$fPendingBetAmount = $fBaseBetForThisTurn * $iBetUnits
-				$sPendingBetTarget = $sTargetBet
-
-				Local $sDoorNameDisplay = $sTargetBet
-				If $sTargetBet == "D" Or $sTargetBet == "B" Then $sDoorNameDisplay = "ĐỎ (x2.90)"
-				If $sTargetBet == "V" Or $sTargetBet == "P" Then $sDoorNameDisplay = "VÀNG (x2.90)"
-				If $sTargetBet == "T" Or $sTargetBet == "M" Then $sDoorNameDisplay = "HAI MÀU (x0.95)"
-
-				_UpdateStatus(StringFormat("🔥 Lệnh %d (Hệ số x%s): Đánh [%s] (%s đ). Đợi Xanh Lá...", $iTargetLevel, $iBetUnits, $sDoorNameDisplay, _FormatNumber($fPendingBetAmount)))
-
-Local $bTimerFound = False ; Thêm biến nhớ khóa mục tiêu
-Local $iWaitTimer = TimerInit()
-
-While $g_bIsRunning
-	If _IsBetTimeOpen() Then
-		$bTimerFound = True ; Nhìn thấy chớp sáng là chốt luôn
-		ExitLoop
-	EndIf
-
-	_ProcessGUIMessages()
-	Sleep(30)
-	If TimerDiff($iWaitTimer) > 15000 Then ExitLoop
-WEnd
-
-; Đổi điều kiện kiểm tra lại thành biến nhớ đã khóa
-If $g_bIsRunning And $bTimerFound Then
-	Local $sWinMode = GUICtrlRead($g_hCombo_WinMode)
-					If $sWinMode = "Thu nhỏ khi cược -> Bật lên" Or $sWinMode = "Thu nhỏ ẩn đi luôn" Then
-						GUISetState(@SW_MINIMIZE, $g_hGUI)
-						Sleep(150)
-					EndIf
-
-					If $sTargetBet == "1" Then
-						Local $fAmtD = $fPendingBetAmount
-						Local $fAmtT = $fPendingBetAmount * 2
-						_UpdateStatus("🔥 Kẹp 2 cửa: Đỏ " & _FormatNumber($fAmtD) & "đ & Hai màu " & _FormatNumber($fAmtT) & "đ")
-						_ClickChipsForAmount($hGameWin, $fAmtD, $g_aBankerButtonPos)
-						_ClickChipsForAmount($hGameWin, $fAmtT, $g_aTieButtonPos)
-					ElseIf $sTargetBet == "2" Then
-						Local $fAmtV = $fPendingBetAmount
-						Local $fAmtT = $fPendingBetAmount * 2
-						_UpdateStatus("🔥 Kẹp 2 cửa: Vàng " & _FormatNumber($fAmtV) & "đ & Hai màu " & _FormatNumber($fAmtT) & "đ")
-						_ClickChipsForAmount($hGameWin, $fAmtV, $g_aPlayerButtonPos)
-						_ClickChipsForAmount($hGameWin, $fAmtT, $g_aTieButtonPos)
-					Else
-						Local $aTargetBtn = $g_aPlayerButtonPos
-						If $sTargetBet == "D" Or $sTargetBet == "B" Then
-							$aTargetBtn = $g_aBankerButtonPos
-						ElseIf $sTargetBet == "T" Or $sTargetBet == "M" Then
-							$aTargetBtn = $g_aTieButtonPos
-						EndIf
-						_ClickChipsForAmount($hGameWin, $fPendingBetAmount, $aTargetBtn)
-					EndIf
-
-					_UpdateStatus("✅ Đã cược xong! Đang soi bảng kết quả mới...")
-
-					If $sWinMode = "Thu nhỏ khi cược -> Bật lên" Then
-						Sleep(200)
-						GUISetState(@SW_RESTORE, $g_hGUI)
-						WinActivate($g_hGUI)
-					EndIf
-
-					Sleep(1500)
-				Else
-					_UpdateStatus("⛔ Lỗi: Không thấy Giờ cược. Hủy lệnh!")
-					$sPendingBetTarget = ""
-					$fPendingBetAmount = 0
-				EndIf
-			Else
-				_UpdateStatus("👁️ Lịch sử: [" & StringRight($sHistRaw, 5) & "]. Chưa khớp công thức...")
 			EndIf
 		EndIf
-
-		Sleep(150)
+		Sleep(50)
 	WEnd
 	_StopProcess()
-EndFunc
+EndFunc   ;==>_StartProcess
 ; ==============================================================================
 ; HÀM HỖ TRỢ MỚI (COPY KÈM THEO)
 ; ==============================================================================
@@ -2086,6 +1979,17 @@ Func _StopProcess()
 		$g_aRuleLevels[$i] = 0
 	Next
 
+	; --- FIX: RESET BẢNG LED XÓC ĐĨA VIP VỀ MẶC ĐỊNH KHI DỪNG TOOL ---
+	For $i = 1 To 10
+		$g_aTierStep[$i] = 1 ; Reset nợ của toàn bộ 10 hàng về Bước 1
+	Next
+	$g_iCurrentTier = 1 ; Đưa vị trí đánh về lại Hàng 1
+
+	; Gọi lại hàm vẽ UI để nó quét lại mảng và tô màu xám toàn bộ
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		_UpdateXocDiaGridUI()
+	EndIf
+
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
 	_UpdateTotalVolumeLabel()
@@ -2116,6 +2020,17 @@ Func _HaltProcess($sReason)
 	For $i = 0 To UBound($g_aRuleLevels) - 1
 		$g_aRuleLevels[$i] = 0
 	Next
+
+	; --- FIX: RESET BẢNG LED XÓC ĐĨA VIP VỀ MẶC ĐỊNH KHI DỪNG TOOL ---
+	For $i = 1 To 10
+		$g_aTierStep[$i] = 1 ; Reset nợ của toàn bộ 10 hàng về Bước 1
+	Next
+	$g_iCurrentTier = 1 ; Đưa vị trí đánh về lại Hàng 1
+
+	; Gọi lại hàm vẽ UI để nó quét lại mảng và tô màu xám toàn bộ
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		_UpdateXocDiaGridUI()
+	EndIf
 
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
@@ -2194,7 +2109,7 @@ Func _ProcessObservation($sActualResult)
 			_UpdateStatus("⏳ Đang nghỉ giải lao... Chờ trôi thêm " & $g_iTargetPauseHands & " ván.")
 		EndIf
 	EndIf
-		$g_iSkipSignalsCount_DuKich -= 1
+	$g_iSkipSignalsCount_DuKich -= 1
 	; ------------------------------
 
 	; KẾT QUẢ ĐỎ/XANH
@@ -2271,18 +2186,50 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 	Local $bReverseLogic = (GUICtrlRead($g_hCheckbox_ReverseLogic) = $GUI_CHECKED)
 	Local $iSavedActiveIndex = $g_iLastActiveRuleIndex
 	Local $fProfitChange = 0
-
-	; Lấy số đơn vị (Lót) vừa đánh
 	Local $iLastBetUnits = $aQLV[1]
 
+	; =========================================================================
+	; 1. XỬ LÝ KẾT QUẢ CHO XÓC ĐĨA VIP
+	; =========================================================================
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		_ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
+
+		; Tính toán lợi nhuận/thua lỗ cho Xóc Đĩa VIP
+		If $sActualResult == $sBetOn Then
+			$g_fTotalProfit += ($g_fCurrentBet * 0.95) ; Thay đổi tỷ lệ phế tùy theo sảnh
+			$fProfitChange = ($g_fCurrentBet * 0.95)
+		Else
+			$g_fTotalProfit -= $g_fCurrentBet
+			$fProfitChange = -$g_fCurrentBet
+		EndIf
+
+		; Cập nhật thống kê và kết thúc luồng xử lý Xóc Đĩa VIP
+		_UpdateProfitLabel()
+		_UpdateBalanceLabel()
+		_RedrawHistory()
+		If $g_bIsRealBetting Then _UpdateDailyStats($g_fCurrentBet, $fProfitChange)
+		_SyncLiveDashboard($g_fInitialCapital + $g_fTotalProfit, $g_fTotalProfit, Number(IniRead(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), "0")))
+		Return ; Bắt buộc phải có Return để thoát khỏi hàm, không chạy xuống logic Baccarat
+	EndIf
+
+	; =========================================================================
+	; 2. XỬ LÝ KẾT QUẢ CHO BACCARAT (Giữ nguyên logic cũ)
+	; =========================================================================
 	If $sActualResult = $sBetOn Then
+		; --- ĐẾM LÓT THỰC TẾ (CÓ TRỪ PHẾ NHÀ CÁI 5%) ---
+		If $sActualResult = "B" Then
+			$g_fTableProfit_RealUnits += ($iLastBetUnits * 0.95) ; Thắng Banker ăn 0.95 lót
+		Else
+			$g_fTableProfit_RealUnits += $iLastBetUnits          ; Thắng Player ăn 1 lót
+		EndIf
+
 		$g_iCycleProfit_Units += $iLastBetUnits
+		$g_iTableProfit_Units += $iLastBetUnits
 
 		If Not $g_bIsRealBetting Then
 			$g_iVirtualLosses = 0
-			_UpdateStatus("🛡️ ĐÁNH NHÁP: Thắng ảo! Cầu chưa sập, tiếp tục rình...")
+			_UpdateStatus("🛡️ ĐÁNH NHÁP: Thắng ảo! Cầu chưa sập...")
 		Else
-			; SỬA LẠI: Trừ 5% phế nếu ăn Banker
 			If $sActualResult = "B" Then
 				$g_fTotalProfit += ($g_fCurrentBet * 0.95)
 				$fProfitChange = ($g_fCurrentBet * 0.95)
@@ -2293,33 +2240,27 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 
 			If $g_fTotalProfit > $g_fPeakProfit Then $g_fPeakProfit = $g_fTotalProfit
 			_UpdateStrategyStats(1)
-
-			If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
-				$g_iWaitTimeEnd_DuKich = TimerInit()
-				$g_iWaitDuration_DuKich = Random(300000, 600000, 1)
-			EndIf
 		EndIf
 
 		If $bReverseLogic Then
 			If $g_iLastActiveRuleIndex > -1 Then $g_iCustomSeqStep += 1
 			$g_iCapitalLevel = $aQLV[2]
-			_UpdateStatus("WIN! (Bám Chuỗi) -> Lên Lv " & $aQLV[2] & " -> Đi tiếp chuỗi!")
+			_UpdateStatus("WIN! (Bám Chuỗi) -> Lên Lv " & $aQLV[2])
 		Else
 			$g_iLastActiveRuleIndex = -1
 			$g_iCustomSeqStep = 0
 			$g_iCapitalLevel = $aQLV[2]
 			If GUICtrlRead($g_hCheckbox_ContinuousMode) <> $GUI_CHECKED Then
 				$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-				_UpdateStatus("WIN! -> Cắt cầu lịch sử -> Chờ chuỗi tín hiệu mới.")
-				If GUICtrlRead($g_hCheckbox_VirtualBet) = $GUI_CHECKED Then
-					$g_bIsRealBetting = False
-					$g_iVirtualLosses = 0
-				EndIf
+				_UpdateStatus("WIN! -> Cắt cầu -> Chờ tín hiệu mới.")
 			EndIf
 		EndIf
 	Else
-		; KHI THUA (LOSS)
+		; --- THUA TRỪ ĐỦ 1 LÓT ---
+		$g_fTableProfit_RealUnits -= $iLastBetUnits
+
 		$g_iCycleProfit_Units -= $iLastBetUnits
+		$g_iTableProfit_Units -= $iLastBetUnits
 
 		If Not $g_bIsRealBetting Then
 			$g_iVirtualLosses += 1
@@ -2328,16 +2269,12 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 				$g_iVirtualLosses = 0
 				$g_iCapitalLevel = 0
 				If $bSepQLV And $iSavedActiveIndex > -1 Then $g_aRuleLevels[$iSavedActiveIndex] = 0
-				_UpdateStatus("🔥 NHÁP ĐÃ GÃY 3 LẦN -> VÀO TIỀN THẬT LỆNH 1 TỪ TAY SAU!")
-			Else
-				_UpdateStatus("🛡️ ĐÁNH NHÁP: Thua ảo (" & $g_iVirtualLosses & "/3) -> Gần chín rồi...")
+				_UpdateStatus("🔥 NHÁP GÃY 3 LẦN -> VÀO TIỀN THẬT!")
 			EndIf
 		Else
 			$g_fTotalProfit -= $g_fCurrentBet
 			$fProfitChange = -$g_fCurrentBet
 			_UpdateStrategyStats(0)
-
-			If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then $g_iSkipSignalsCount_DuKich = 10
 		EndIf
 
 		If $bReverseLogic Then
@@ -2345,15 +2282,11 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 			$g_iCustomSeqStep = 0
 			$g_iCapitalLevel = $aQLV[3]
 			$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-			_UpdateStatus("LOSS! (Bám Chuỗi) -> Cắt cầu -> Về Lv " & $aQLV[3] & " chờ tín hiệu mới.")
-			If GUICtrlRead($g_hCheckbox_VirtualBet) = $GUI_CHECKED Then
-				$g_bIsRealBetting = False
-				$g_iVirtualLosses = 0
-			EndIf
+			_UpdateStatus("LOSS! (Bám Chuỗi) -> Cắt cầu -> Về Lv " & $aQLV[3])
 		Else
 			If $g_iLastActiveRuleIndex > -1 Then $g_iCustomSeqStep += 1
 			$g_iCapitalLevel = $aQLV[3]
-			If $g_bIsRealBetting Then _UpdateStatus("LOSS! -> Lên Lv " & $aQLV[3] & " -> Tiếp tục đuổi cầu.")
+			If $g_bIsRealBetting Then _UpdateStatus("LOSS! -> Lên Lv " & $aQLV[3])
 		EndIf
 	EndIf
 
@@ -2361,32 +2294,12 @@ Func _ProcessBetOutcome($sActualResult, $sBetOn)
 		$g_aRuleLevels[$iSavedActiveIndex] = $g_iCapitalLevel
 	EndIf
 
-	; =========================================================
-	; CHỐT LÃI CHU KỲ: ĐỔI MẪU CHO PHƯƠNG PHÁP HỒNG KÔNG
-	; =========================================================
-	If StringInStr($g_sAppliedVIPCode, "HK") Then
-		If $g_iCycleProfit_Units >= 0 Then
-			_UpdateStatus("🚀 Chu kỳ HK đã HÒA/DƯƠNG (" & $g_iCycleProfit_Units & " lót) -> CHỐT CHU KỲ, LẤY MẪU MỚI!")
-			$g_iCapitalLevel = 0
-			$g_iCycleProfit_Units = 0
-			$g_iHK_ValidHands_CycleStart = $g_iTotalBanker + $g_iTotalPlayer ; Ghi nhớ ván bắt đầu chu kỳ mới
-		ElseIf $g_iCapitalLevel == 0 Then
-			$g_iCycleProfit_Units = 0
-			$g_iHK_ValidHands_CycleStart = $g_iTotalBanker + $g_iTotalPlayer
-		EndIf
-	EndIf
-	; =========================================================
-
 	_UpdateProfitLabel()
 	_UpdateBalanceLabel()
 	_RedrawHistory()
 
 	If $g_bIsRealBetting Then _UpdateDailyStats($g_fCurrentBet, $fProfitChange)
-
-	Local $fSoDuHienTai = $g_fInitialCapital + $g_fTotalProfit
-	Local $fLaiLoHienTai = $g_fTotalProfit
-	Local $fTongVolumeTrongNgay = Number(IniRead(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), "0"))
-	_SyncLiveDashboard($fSoDuHienTai, $fLaiLoHienTai, $fTongVolumeTrongNgay)
+	_SyncLiveDashboard($g_fInitialCapital + $g_fTotalProfit, $g_fTotalProfit, Number(IniRead(@ScriptDir & "\volume_history.ini", "Daily", _GetGamingDate(), "0")))
 EndFunc   ;==>_ProcessBetOutcome
 Func _AddNewHistoryEntry($sResult)
 	_Vault_Init()
@@ -2407,11 +2320,11 @@ Func _AddNewHistoryEntry($sResult)
 EndFunc   ;==>_AddNewHistoryEntry
 Func _UpdateBPTTotals($sResult)
 	Switch $sResult
-		Case "B", "D"  ; Nếu kết quả là Banker (B) hoặc Đỏ (D) -> Cộng vào ô B
+		Case "B", "D", "C"  ; Nếu kết quả là Banker (B) hoặc Đỏ (D) hoặc Chẵn (C)
 			$g_iTotalBanker += 1
-		Case "P", "V"  ; Nếu kết quả là Player (P) hoặc Vàng (V) -> Cộng vào ô P
+		Case "P", "V", "L"  ; Nếu kết quả là Player (P) hoặc Vàng (V) hoặc Lẻ (L)
 			$g_iTotalPlayer += 1
-		Case "T"       ; Hòa thì giữ nguyên
+		Case "T"            ; Hòa thì giữ nguyên
 			$g_iTotalTie += 1
 	EndSwitch
 	_UpdateBPTTotalsLabels()
@@ -2422,19 +2335,11 @@ Func _UpdateBPTTotalsLabels()
 	GUICtrlSetData($g_hLabel_TotalT_Val, $g_iTotalTie)
 EndFunc   ;==>_UpdateBPTTotalsLabels
 
-; THÊM CHỮ ByRef VÀO ĐÂY
 Func _PerformBet($sBetOn, ByRef $fAmountToBet)
 	If Not $g_bIsRunning Then Return False
 	If _CheckProfitLossTargets() Then Return False
 
-	If Not $g_bIsRealBetting Then
-		_UpdateStatus("🛡️ ĐÁNH NHÁP (Rình mồi): Thử nghiệm đánh " & $sBetOn & " (" & _FormatNumber($fAmountToBet) & " đ)...")
-		$g_fLastBetAmount = $fAmountToBet
-		$g_sLastBetOn = $sBetOn
-		Return True
-	EndIf
-
-	_UpdateStatus(StringFormat("Thực hiện cược %s (%s VND)...", $sBetOn, _FormatNumber($fAmountToBet)))
+	_UpdateStatus("💸 [AUTO CLICK] Bắt đầu rải chip cược [" & $sBetOn & "] (Mức tiền: " & _FormatNumber($fAmountToBet) & " đ)...")
 
 	Local $hGameWin = $g_hTargetGameWin
 	If $hGameWin = 0 Or Not WinExists($hGameWin) Then
@@ -2447,21 +2352,18 @@ Func _PerformBet($sBetOn, ByRef $fAmountToBet)
 		Return False
 	EndIf
 
-	; Map tín hiệu Đỏ(D) / Vàng(V) / Hai Màu(M) sang nút bấm chuột
 	Local $aBetAreaPos
-	If $sBetOn == "B" Or $sBetOn == "D" Then
+	If $sBetOn == "B" Or $sBetOn == "D" Or $sBetOn == "C" Then
 		$aBetAreaPos = $g_aBankerButtonPos
-	ElseIf $sBetOn == "P" Or $sBetOn == "V" Or $sBetOn == "M" Then
+	ElseIf $sBetOn == "P" Or $sBetOn == "V" Or $sBetOn == "M" Or $sBetOn == "L" Then
 		$aBetAreaPos = $g_aPlayerButtonPos
 	Else
 		Return False
 	EndIf
 	Sleep(50)
 
-	; VẪN GỌI HÀM CLICK CHIP BÌNH THƯỜNG, NÓ SẼ TỰ KÉO SỐ TIỀN THỰC TẾ VỀ
 	_ClickChipsForAmount($hGameWin, $fAmountToBet, $aBetAreaPos)
 
-	; Gán số tiền THỰC TẾ (đã bị đổi sau khi click chip) vào biến nhớ
 	$g_fLastBetAmount = $fAmountToBet
 	$g_sLastBetOn = $sBetOn
 	Return True
@@ -2470,52 +2372,54 @@ EndFunc   ;==>_PerformBet
 Func _ClickChipsForAmount($hGameWin, ByRef $fAmount, $aBetAreaPos)
 	Local $aClickQueue = _CalculateOptimalClicks($fAmount)
 	If @error Then Return False
-
 	Local $iTotalSteps = UBound($aClickQueue)
 	If $iTotalSteps = 0 Then
 		$fAmount = 0
 		Return True
 	EndIf
 
-	Local $iTotalClicks = 0
-	For $i = 0 To $iTotalSteps - 1
-		$iTotalClicks += $aClickQueue[$i][2]
-	Next
-
-	_UpdateStatus("Đang cược " & _FormatNumber($fAmount) & "...")
-	Local $iBaseDelay = $g_iClickDelay
-
 	If Not WinActive($hGameWin) Then
-		If BitAND(WinGetState($hGameWin), 16) Then
-			WinSetState($hGameWin, "", @SW_RESTORE)
-			Sleep(100)
-		EndIf
+		WinActivate($hGameWin)
+		Sleep(200)
 	EndIf
+
+	Local $iBaseDelay = $g_iClickDelay
 
 	For $i = 0 To $iTotalSteps - 1
 		Local $iChipX = $aClickQueue[$i][0]
 		Local $iChipY = $aClickQueue[$i][1]
 		Local $iCount = $aClickQueue[$i][2]
 
-		_SingleClick($hGameWin, $iChipX, $iChipY, 3)
-		Sleep($iBaseDelay + Random(10, 20, 1))
+		; 1. Kéo chuột đến Chip
+		_MouseMove_Human(MouseGetPos()[0], MouseGetPos()[1], $iChipX + Random(-3, 3, 1), $iChipY + Random(-3, 3, 1), 12)
+		MouseDown("left")
+		Sleep(Random(25, 45, 1))
+		MouseUp("left")
+		Sleep($iBaseDelay + 50)
 
-		If $g_sClickMode = "Mouse" Then
-			MouseMove($aBetAreaPos[0] + Random(-5, 5, 1), $aBetAreaPos[1] + Random(-5, 5, 1), $g_iMouseSpeed)
-		EndIf
+		; 2. Kéo chuột vào VÙNG CƯỢC (Bán kính ngẫu nhiên 35px ~ 1cm quanh Tâm)
+		Local $iTargetX = $aBetAreaPos[0] + Random(-35, 35, 1)
+		Local $iTargetY = $aBetAreaPos[1] + Random(-35, 35, 1)
+		_MouseMove_Human(MouseGetPos()[0], MouseGetPos()[1], $iTargetX, $iTargetY, 15)
 
+		; 3. Bấm N lần xả Chip
 		For $j = 1 To $iCount
 			If Not $g_bIsRunning Then Return False
-			_SingleClick($hGameWin, $aBetAreaPos[0], $aBetAreaPos[1], 10)
-
-			Local $iCurrentDelay = $iBaseDelay
-			If $iCurrentDelay < 10 Then $iCurrentDelay = 10
-			Sleep($iCurrentDelay)
+			MouseDown("left")
+			Sleep(Random(25, 45, 1))
+			MouseUp("left")
+			Sleep($iBaseDelay + Random(20, 30, 1))
 		Next
 	Next
 
+	; 4. Vẩy chuột né ra góc trái
+	Local $aGamePos = WinGetPos($hGameWin)
+	If IsArray($aGamePos) Then
+		_MouseMove_Human(MouseGetPos()[0], MouseGetPos()[1], $aGamePos[0] + 40, $aGamePos[1] + 40, 8)
+	EndIf
+
 	Return True
-EndFunc   ;==>_ClickChipsForAmount
+EndFunc
 Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 	; 1. Chặn lỗi nếu tọa độ trượt ra ngoài màn hình
 	If $iX <= 0 Or $iY <= 0 Then Return False
@@ -2524,35 +2428,38 @@ Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
 	Local $iRandX = $iX
 	Local $iRandY = $iY
 
+	; Cộng trừ bán kính ngẫu nhiên
 	If $iRadius > 0 Then
 		$iRandX = $iX + Random(-$iRadius, $iRadius, 1)
 		$iRandY = $iY + Random(-$iRadius, $iRadius, 1)
 	EndIf
 
-	; 2. Đảm bảo cửa sổ không bị thu nhỏ xuống Taskbar
 	If BitAND(WinGetState($hWnd), 16) Then WinSetState($hWnd, "", @SW_RESTORE)
 
-	; TUYỆT ĐỐI KHÔNG DÙNG WinActivate ĐỂ CHỐNG GIẬT MÀN HÌNH
+	Local $aCurrentPos = MouseGetPos()
+	BlockInput(1)
 
-	; 3. CLICK BÓNG MA (GHOST CLICK)
-	Local $aOldMousePos = MouseGetPos() ; Chụp lại vị trí chuột thật của sếp
+	; BƯỚC 1: Lướt tới điểm cược
+	_MouseMove_Human($aCurrentPos[0], $aCurrentPos[1], $iRandX, $iRandY, Random(20, 35, 1))
 
-	BlockInput(1) ; Khóa tay khách 1/10 giây để chống giằng co chuột với Tool
-
-	; Bay chuột tới tọa độ cược và Click (Speed 0 = Tức thì)
-	MouseMove($iRandX, $iRandY, 0)
 	MouseDown("left")
-	Sleep(Random(20, 30, 1)) ; Nhấp nhả ngẫu nhiên cho giống người thật
+	Sleep(Random(30, 70, 1))
 	MouseUp("left")
 
-	; Trả chuột về ngay vị trí sếp đang làm việc dở
-	MouseMove($aOldMousePos[0], $aOldMousePos[1], 0)
+	; BƯỚC 2: "RÚT TAY VỀ" CHỖ TRỐNG TRÊN BÀN GAME (Safe Zone)
+	; Hất chuột nhích lên trên và sang ngang một chút (Khoảng 100-200 pixel)
+	; Đảm bảo chuột không bị rớt xuống Taskbar và cũng không nằm đè lên phỉnh
+	Local $iSafeX = $iRandX + Random(-150, 150, 1)
+	Local $iSafeY = $iRandY - Random(100, 200, 1) ; Dấu trừ (-) là kéo chuột hướng lên trên
 
-	BlockInput(0) ; Mở khóa chuột lại cho sếp dùng
+	; Cú hất chuột này ngắn nên cho thời gian nhanh hơn (15-20 steps)
+	_MouseMove_Human($iRandX, $iRandY, $iSafeX, $iSafeY, Random(15, 20, 1))
 
-	Sleep(20)
+	BlockInput(0)
+
+	Sleep(Random(15, 30, 1))
 	Return True
-EndFunc   ;==>_SingleClick
+EndFunc
 Func _CalculateOptimalClicks(ByRef $fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
 	Local $iActiveCount = 0
@@ -2615,80 +2522,43 @@ Func _CalculateOptimalClicks(ByRef $fTargetAmount)
 EndFunc   ;==>_CalculateOptimalClicks
 Func _ScanAreaForResult()
 	Local $hWnd = $g_hTargetGameWin
-	If $hWnd = 0 Or Not WinExists($hWnd) Then
-		$hWnd = _GetRealGameWindow(GUICtrlRead($g_hInput_WindowClass))
-		$g_hTargetGameWin = $hWnd
-	EndIf
 	If $hWnd = 0 Or Not WinExists($hWnd) Then Return ""
 
-	; ================================================
-	; NẾU ĐANG CHƠI LONG LONG (Quét bảng tĩnh)
-	; ================================================
-	If GUICtrlRead($g_hCombo_GameMode) == "Long Long (Evo)" Then
-		Local $sBoard = _ScanEvoLongLongBoard_Full()
+	Local $sBoard = _ScanUniversalBeadPlate()
 
-		; Khởi tạo bộ nhớ lần đầu tiên khi tool vừa bật
-		If $g_sLastLLBoard == "" Then
+	If $g_sLastLLBoard == "" Then
+		$g_sLastLLBoard = $sBoard
+		Return ""
+	EndIf
+
+	If $sBoard <> $g_sLastLLBoard Then
+		Local $iLenNew = StringLen($sBoard)
+		Local $iLenOld = StringLen($g_sLastLLBoard)
+
+		If $iLenNew < ($iLenOld - 5) Then
 			$g_sLastLLBoard = $sBoard
+			$g_iCapitalLevel = 0
+			$g_iCustomSeqStep = 0
+			_UpdateStatus("🔄 Dealer đã đổi hộp bài mới! Reset chu kỳ.")
 			Return ""
 		EndIf
 
-		; KIỂM TRA SỰ THAY ĐỔI
-		If $sBoard <> $g_sLastLLBoard Then
-			Local $iLenNew = StringLen($sBoard)
-			Local $iLenOld = StringLen($g_sLastLLBoard)
+		If $iLenNew < $iLenOld Then Return ""
 
-			; Trường hợp 1: Dealer đổi giày, xóa bảng (Độ dài thụt giảm mạnh)
-			; Thường giảm về 0 hoặc 1. Trừ hao 5 cho an toàn.
-			If $iLenNew < ($iLenOld - 5) Then
-				$g_sLastLLBoard = $sBoard
-
-				; Ép tool reset lại từ đầu, dọn dẹp các lệnh gấp thếp đang đánh dở
-				$g_iCapitalLevel = 0
-				$g_iCustomSeqStep = 0
-				_UpdateStatus("🔄 Dealer đã đổi hộp bài mới! Reset chu kỳ, bắt đầu quan sát lại.")
-				Return ""
-			EndIf
-
-			; --- THÊM ĐOẠN NÀY ĐỂ FIX LỖI NHẤP NHÁY / NHẢY CẦU LIÊN TỤC ---
-			; Nếu chuỗi tự nhiên ngắn đi 1-4 nhịp (do hạt cuối chớp tắt, hoặc sếp cầm tool đè lên)
-			; Tuyệt đối bỏ qua, không lấy kết quả và không lưu bộ nhớ để tránh spam!
-			If $iLenNew < $iLenOld Then
-				Return ""
-			EndIf
-			; -------------------------------------------------------------
-
-			; Trường hợp 2: Có ván mới (Đang điền dở HOẶC Full bảng tịnh tiến)
-			; Dù rơi vào trường hợp nào, kết quả mới luôn nằm ở đuôi chuỗi
-			Local $sNewChar = StringRight($sBoard, 1)
-			$g_sLastLLBoard = $sBoard
-			Return $sNewChar
-		EndIf
-
-		Return "" ; Bảng đứng im, chưa có ván mới
+		Local $sNewChar = StringRight($sBoard, 1)
+		$g_sLastLLBoard = $sBoard
+		Return $sNewChar
 	EndIf
 
-	; ================================================
-	; NẾU ĐANG CHƠI BACCARAT (Quét điểm ảnh tĩnh)
-	; ================================================
-	Local $iTolerance = $g_iShade_Result
-	Local $iColB = $g_iBankerColor
-	Local $iColP = $g_iPlayerColor
-	Local $iColT = $g_iTieColor
-
-	If IsArray(PixelSearch($g_aResultArea[0], $g_aResultArea[1], $g_aResultArea[2], $g_aResultArea[3], $iColB, $iTolerance)) Then Return "B"
-	If IsArray(PixelSearch($g_aResultArea[0], $g_aResultArea[1], $g_aResultArea[2], $g_aResultArea[3], $iColP, $iTolerance)) Then Return "P"
-	If IsArray(PixelSearch($g_aResultArea[0], $g_aResultArea[1], $g_aResultArea[2], $g_aResultArea[3], $iColT, $iTolerance)) Then Return "T"
-
 	Return ""
-EndFunc
+EndFunc   ;==>_ScanAreaForResult
 Func _GetAndValidateInputs()
 	$g_sGameWindowClass = GUICtrlRead($g_hInput_WindowClass)
 
 	; --- Tọa độ Nút Bấm ---
 	$g_aBankerButtonPos[0] = Number(GUICtrlRead($g_hInput_BankerX))
 	$g_aBankerButtonPos[1] = Number(GUICtrlRead($g_hInput_BankerY))
-$g_aPlayerButtonPos[0] = Number(GUICtrlRead($g_hInput_PlayerX))
+	$g_aPlayerButtonPos[0] = Number(GUICtrlRead($g_hInput_PlayerX))
 	$g_aPlayerButtonPos[1] = Number(GUICtrlRead($g_hInput_PlayerY))
 	$g_aTieButtonPos[0] = Number(GUICtrlRead($g_hInput_TieX)) ; <--- Thêm
 	$g_aTieButtonPos[1] = Number(GUICtrlRead($g_hInput_TieY)) ; <--- Thêm
@@ -2811,89 +2681,105 @@ EndFunc   ;==>_Core_SaveStat
 Func _CheckProfitLossTargets()
 	Local $bHitTarget = False
 	Local $sReason = ""
-	Local $fTolerance = 0.95 ; Dung sai 95% để chốt sớm an toàn
+	Local $fTolerance = 0.95 ; Dung sai 95% chốt sớm
 
-	; Lấy thông số từ giao diện
-	Local $bIsLaiKep = (GUICtrlRead($g_hCheckbox_LaiKepVIP) == $GUI_CHECKED)
+	; Chỉ kiểm tra nếu tích bật Mục Tiêu Tổng
+	If GUICtrlRead($g_hCheckbox_DailyShield) == $GUI_CHECKED Then
+		Local $sFileProfit = @ScriptDir & "\profit_history.ini"
+		Local $sToday = _GetGamingDate()
 
-	Local $fTargetProfitAmount = 0
-	Local $fMaxLossAmount = 0
-	Local $fTrailingAmount = 0
+		; CHỈ LẤY LỢI NHUẬN THUẦN TÚY (KHÔNG CỘNG VOLUME)
+		Local $fNetDay = Number(IniRead($sFileProfit, "Daily", $sToday, "0"))
 
-	If $bIsLaiKep Then
-		; Nếu BẬT Lãi Kép: Tính mục tiêu theo % Vốn (Bỏ qua ô tiền cố định)
-		Local $fTargetWinPercent = Number(GUICtrlRead($g_hInput_TargetProfitPercent))
-		Local $fStopLossPercent = Number(GUICtrlRead($g_hInput_StopLossPercent))
-		$fTargetProfitAmount = $g_fInitialCapital * ($fTargetWinPercent / 100)
-		$fMaxLossAmount = -1 * ($g_fInitialCapital * ($fStopLossPercent / 100))
-	Else
-		; Nếu TẮT Lãi Kép: Tính mục tiêu theo số Tiền Mặt (VND) cố định góc phải
-		$fTargetProfitAmount = Number(StringRegExpReplace(GUICtrlRead($g_hInput_TakeProfit), "\D", ""))
-		$fMaxLossAmount = -1 * Number(StringRegExpReplace(GUICtrlRead($g_hInput_StopLoss), "\D", ""))
-		$fTrailingAmount = Number(StringRegExpReplace(GUICtrlRead($g_hInput_TrailingStop), "\D", ""))
-	EndIf
+		; Cập nhật Đỉnh Lãi Ngày liên tục
+		If $fNetDay > $g_fPeakNetDay Then $g_fPeakNetDay = $fNetDay
 
-	; 1. KIỂM TRA MỐC ÂM (CẮT LỖ)
-	If $fMaxLossAmount < 0 And $g_fTotalProfit <= ($fMaxLossAmount * $fTolerance) Then
-		$bHitTarget = True
-		$sReason = "CHẠM ĐÁY LỖ (Âm " & _FormatNumber($g_fTotalProfit) & "đ / Giới hạn " & _FormatNumber($fMaxLossAmount) & "đ)"
-	EndIf
+		; In ra màn hình cho sếp xem
+		Local $sColorNet = ($fNetDay >= 0) ? 0x006400 : 0xFF0000
+		GUICtrlSetData($g_hLabel_NetDay, "LỢI NHUẬN TỔNG: " & _FormatNumber($fNetDay) & " đ")
+		GUICtrlSetColor($g_hLabel_NetDay, $sColorNet)
 
-	; 2. KIỂM TRA MỐC DƯƠNG & KÉO ĐUÔI
-	If $fTargetProfitAmount > 0 And $g_fTotalProfit >= ($fTargetProfitAmount * $fTolerance) Then
-		If $bIsLaiKep Or $fTrailingAmount <= 0 Then
-			; Nếu dùng Lãi kép, hoặc tiền Kéo đuôi = 0 -> Chạm mốc là chốt ngay
+		Local $fDailyTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTarget), "\D", ""))
+		Local $fDailyTrailing = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTrailing), "\D", ""))
+		Local $fDailyStopLoss = -1 * Abs(Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyStopLoss), "\D", "")))
+
+		; A. Kiểm tra Cắt Lỗ
+		If $fDailyStopLoss < 0 And $fNetDay <= $fDailyStopLoss Then
 			$bHitTarget = True
-			$sReason = "CHẠM MỐC LÃI (Đạt " & _FormatNumber($g_fTotalProfit) & "đ / Mục tiêu " & _FormatNumber($fTargetProfitAmount) & "đ)"
-		Else
-			; Nếu có setup Kéo đuôi -> Chỉ chốt khi lợi nhuận tụt khỏi đỉnh 1 khoảng bằng Kéo Đuôi
-			$g_bIsTrailingMode = True
-			If $g_fTotalProfit <= ($g_fPeakProfit - $fTrailingAmount) Then
+			$sReason = "CHẠM MỨC CẮT LỖ (Âm " & _FormatNumber($fNetDay) & ")"
+		EndIf
+
+		; B. Kiểm tra Chốt Lời / Kéo Đuôi
+		If $fDailyTarget > 0 Then
+			; Khóa Lãi An Toàn (Đạt 80% thì không bao giờ để tụt dưới 20%)
+			If $g_fPeakNetDay >= ($fDailyTarget * 0.8) And $fNetDay <= ($fDailyTarget * 0.2) Then
 				$bHitTarget = True
-				$sReason = "CHỐT LÃI KÉO ĐUÔI (Đỉnh: " & _FormatNumber($g_fPeakProfit) & "đ, Tụt mất: " & _FormatNumber($fTrailingAmount) & "đ)"
+				$sReason = "BẢO TOÀN LÃI (Đỉnh: " & _FormatNumber($g_fPeakNetDay) & ")"
+			EndIf
+
+			If $fNetDay >= ($fDailyTarget * $fTolerance) Or $g_bIsDailyTrailing Then
+				$g_bIsDailyTrailing = True
+				Local $fDynTrailDay = $fDailyTrailing
+				If $g_fPeakNetDay >= ($fDailyTarget * 2) Then $fDynTrailDay = $fDailyTrailing / 2 ; Bóp đuôi nếu ăn x2
+
+				If $fNetDay <= ($g_fPeakNetDay - $fDynTrailDay) Then
+					$bHitTarget = True
+					$sReason = "CHỐT LÃI (Đỉnh: " & _FormatNumber($g_fPeakNetDay) & " đ, Tụt mất: " & _FormatNumber($fDynTrailDay) & " đ)"
+				EndIf
+			EndIf
+		EndIf
+
+		; Xử lý khi chạm mốc
+		If $bHitTarget Then
+			_StopAndSaveSession()
+
+			If GUICtrlRead($g_hRadio_Action_Stop) == $GUI_CHECKED Then
+				_UpdateStatus("🛑 " & $sReason & " -> DỪNG TOOL!")
+				_StopProcess()
+				Return True
+			ElseIf GUICtrlRead($g_hRadio_Action_PauseMin) == $GUI_CHECKED Then
+				Local $iMins = Number(GUICtrlRead($g_hInput_Action_PauseMin))
+				$g_iTargetPauseEndTime = TimerInit()
+				$g_iTargetPauseDuration = $iMins * 60000
+				_UpdateStatus("⏳ " & $sReason & " -> Nghỉ " & $iMins & " phút.")
+				Return False
+			Else
+				Local $iHands = Number(GUICtrlRead($g_hInput_Action_PauseHand))
+				$g_iTargetPauseHands = $iHands
+				_UpdateStatus("⏳ " & $sReason & " -> Chờ trôi " & $iHands & " ván.")
+				Return False
 			EndIf
 		EndIf
 	EndIf
-
-	; 3. NẾU ĐẠT MỤC TIÊU -> THỰC THI DỪNG / NGHỈ
-	If $bHitTarget Then
-		If $g_fTotalProfit <> 0 Then
-			$g_fInitialCapital += $g_fTotalProfit
-			GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
-		EndIf
-
-		; Reset thông số chu kỳ
-		$g_fTotalProfit = 0
-		$g_iCapitalLevel = 0
-		$g_iCustomSeqStep = 0
-		$g_iLastActiveRuleIndex = -1
-		$g_fPeakProfit = 0
-		$g_bIsTrailingMode = False
-		For $i = 0 To UBound($g_aRuleLevels) - 1
-			$g_aRuleLevels[$i] = 0
-		Next
-		_UpdateProfitLabel()
-		_UpdateBalanceLabel()
-
-		; Thực hiện hành động Dừng/Nghỉ
-		If GUICtrlRead($g_hRadio_Action_Stop) == $GUI_CHECKED Then
-			_UpdateStatus("🛑 " & $sReason & " -> DỪNG TOOL HẲN!")
-			_StopProcess()
-			Return True
-		ElseIf GUICtrlRead($g_hRadio_Action_PauseMin) == $GUI_CHECKED Then
-			Local $iMins = Number(GUICtrlRead($g_hInput_Action_PauseMin))
-			$g_iTargetPauseEndTime = TimerInit()
-			$g_iTargetPauseDuration = $iMins * 60000
-			_UpdateStatus("⏳ " & $sReason & " -> Bắt đầu nghỉ " & $iMins & " phút.")
-			Return False
-		ElseIf GUICtrlRead($g_hRadio_Action_PauseHand) == $GUI_CHECKED Then
-			Local $iHands = Number(GUICtrlRead($g_hInput_Action_PauseHand))
-			$g_iTargetPauseHands = $iHands
-			_UpdateStatus("⏳ " & $sReason & " -> Bắt đầu chờ trôi " & $iHands & " ván.")
-			Return False
-		EndIf
-	EndIf
 	Return False
+EndFunc
+; Hàm hỗ trợ để rút gọn code
+Func _StopAndSaveSession()
+	If $g_fTotalProfit <> 0 Then
+		$g_fInitialCapital += $g_fTotalProfit
+		GUICtrlSetData($g_hInput_InitialCapital, _FormatNumber($g_fInitialCapital))
+	EndIf
+	$g_fTotalProfit = 0
+	$g_iCapitalLevel = 0
+	$g_iCustomSeqStep = 0
+	$g_iLastActiveRuleIndex = -1
+	$g_fPeakProfit = 0
+	$g_bIsTrailingMode = False
+	For $i = 0 To UBound($g_aRuleLevels) - 1
+		$g_aRuleLevels[$i] = 0
+	Next
+	; --- FIX: RESET BẢNG LED XÓC ĐĨA VIP VỀ MẶC ĐỊNH KHI DỪNG TOOL ---
+	For $i = 1 To 10
+		$g_aTierStep[$i] = 1 ; Reset nợ của toàn bộ 10 hàng về Bước 1
+	Next
+	$g_iCurrentTier = 1 ; Đưa vị trí đánh về lại Hàng 1
+
+	; Gọi lại hàm vẽ UI để nó quét lại mảng và tô màu xám toàn bộ
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		_UpdateXocDiaGridUI()
+	EndIf
+	_UpdateProfitLabel()
+	_UpdateBalanceLabel()
 EndFunc
 Func _RedrawHistory()
 	; Xóa sạch bảng cũ
@@ -2950,13 +2836,13 @@ Func _StyleResultLabel($hLabel, $sResult, $bHighlight, $bIsLatest)
 	ElseIf $bHighlight Then
 		GUICtrlSetBkColor($hLabel, $g_iHighlightColor)
 		GUICtrlSetColor($hLabel, 0x000000)
-Else
-Switch $sResult
-			Case "B", "D" ; Banker / Đỏ
+	Else
+		Switch $sResult
+			Case "B", "D", "C" ; Banker / Đỏ / Chẵn
 				GUICtrlSetBkColor($hLabel, 0xF70102) ; MÀU ĐỎ CHUẨN
 				GUICtrlSetColor($hLabel, 0xFFFFFF)
 
-			Case "P", "V" ; Player / Con / Vàng
+			Case "P", "V", "L" ; Player / Con / Vàng / Lẻ
 				GUICtrlSetBkColor($hLabel, 0x0182FA) ; MÀU XANH DƯƠNG CHUẨN
 				GUICtrlSetColor($hLabel, 0xFFFFFF)
 
@@ -2967,81 +2853,63 @@ Switch $sResult
 			Case Else
 				GUICtrlSetBkColor($hLabel, 0xE0E0E0)
 				GUICtrlSetColor($hLabel, 0x000000)
-EndSwitch
-EndIf
-EndFunc
+		EndSwitch
+	EndIf
+EndFunc   ;==>_StyleResultLabel
 Func _SetControlsState($bEnable)
 	Local $iState = $bEnable ? $GUI_ENABLE : $GUI_DISABLE
 	Local $iInputColor = $bEnable ? 0xE0FFFF : 0xE0E0E0
-	GUICtrlSetState($g_hCheckbox_VirtualBet, $iState)
-	GUICtrlSetState($g_hInput_TrailingStop, $iState)
+	Local $iWhite = $bEnable ? 0xFFFFFF : 0xE0E0E0
+	Local $iYellow = $bEnable ? 0xFFFACD : 0xE0E0E0
+
+	; Khóa Vốn Cược
 	GUICtrlSetState($g_hInput_InitialCapital, $iState)
 	GUICtrlSetBkColor($g_hInput_InitialCapital, $iInputColor)
 	GUICtrlSetState($g_hInput_InitialBet, $iState)
 	GUICtrlSetBkColor($g_hInput_InitialBet, $iInputColor)
-	GUICtrlSetState($g_hInput_TakeProfit, $iState)
-	GUICtrlSetBkColor($g_hInput_TakeProfit, $iInputColor)
-	GUICtrlSetState($g_hInput_StopLoss, $iState)
-	GUICtrlSetBkColor($g_hInput_StopLoss, $iInputColor)
-GUICtrlSetState($g_hList_FormulaLibrary, $iState)
-GUICtrlSetState($g_hBtn_LoadFormula, $iState)
-GUICtrlSetState($g_hBtn_SaveFormula, $iState)
-GUICtrlSetState($g_hBtn_DeleteFormula, $iState)
-	GUICtrlSetState($g_hCombo_Profiles_Main, $iState)
-	GUICtrlSetState($g_hRadio_ClickMode_Control_Main, $iState)
-	GUICtrlSetState($g_hRadio_ClickMode_Mouse_Main, $iState)
-	GUICtrlSetState($g_hInput_ClickDelay_Main, $iState)
-	GUICtrlSetState($g_hInput_MouseSpeed, $iState)
 
-	GUICtrlSetState($g_hTabItemConfig, $iState)
+	; Khóa Phương Pháp Cược
+	GUICtrlSetState($g_hCheckbox_SeparateQLV, $iState)
+	GUICtrlSetState($g_hCheckbox_ReverseLogic, $iState)
+	GUICtrlSetState($g_hInput_CustomRules, $iState)
+	GUICtrlSetBkColor($g_hInput_CustomRules, $iYellow)
 
-	; Khóa/Mở Khóa GUI cho Custom
+	; Khóa Bảng QLV
 	GUICtrlSetState($g_hInput_CustomQLV_Edit, $iState)
-	If $bEnable Then
-		GUICtrlSetBkColor($g_hInput_CustomQLV_Edit, 0xF0FFF0)
-	Else
-		GUICtrlSetBkColor($g_hInput_CustomQLV_Edit, 0xE0E0E0)
-	EndIf
-
+	GUICtrlSetBkColor($g_hInput_CustomQLV_Edit, $bEnable ? 0xF0FFF0 : 0xE0E0E0)
 	GUICtrlSetState($g_hCombo_QLV_Presets, $iState)
 	GUICtrlSetState($g_hButton_SaveQLV, $iState)
 	GUICtrlSetState($g_hButton_DeleteQLV, $iState)
 
-	GUICtrlSetState($g_hCheckbox_Blacklist, $iState)
-	GUICtrlSetState($g_hInput_Blacklist, $iState)
-	GUICtrlSetState($g_hCheckbox_Blacklist_IgnoreRunning, $iState)
-    GUICtrlSetState($g_hCheckbox_LaiKepVIP, $iState)
-	GUICtrlSetState($g_hInput_LaiKepPercent, $iState)
-	GUICtrlSetState($g_hInput_TargetProfitPercent, $iState) ; Khóa/Mở ô mốc dương
-	GUICtrlSetState($g_hInput_StopLossPercent, $iState)     ; Khóa/Mở ô mốc âm
-If $bEnable Then
+	; Khóa các ô Cấu hình Xóc Đĩa VIP
+	GUICtrlSetState($g_hInput_XD_Seq, $iState)
+	GUICtrlSetState($g_hInput_XD_MaxRows, $iState)
+
+	; Khóa Mục Tiêu & Dừng Nghỉ
+	GUICtrlSetState($g_hCheckbox_DailyShield, $iState)
+	GUICtrlSetState($g_hInput_DailyTarget, $iState)
+	GUICtrlSetState($g_hInput_DailyStopLoss, $iState)
+	GUICtrlSetState($g_hInput_DailyTrailing, $iState)
+	GUICtrlSetState($g_hRadio_Action_Stop, $iState)
+	GUICtrlSetState($g_hRadio_Action_PauseMin, $iState)
+	GUICtrlSetState($g_hInput_Action_PauseMin, $iState)
+	GUICtrlSetState($g_hRadio_Action_PauseHand, $iState)
+	GUICtrlSetState($g_hInput_Action_PauseHand, $iState)
+
+	; Khóa Tùy Chọn & Tab
+	GUICtrlSetState($g_hCombo_Profiles_Main, $iState)
+	GUICtrlSetState($g_hRadio_ClickMode_Control_Main, $iState)
+	GUICtrlSetState($g_hRadio_ClickMode_Mouse_Main, $iState)
+	GUICtrlSetState($g_hTabItemConfig, $iState) ; Khóa cấm khách bấm sang tab cấu hình khi tool đang chạy
+
+	If $bEnable Then
 		GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
 		GUICtrlSetBkColor($g_hButton_Start, 0x33CC33)
-		GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-
-		; Luôn mở khóa tự do mọi thứ khi Tool dừng
-		GUICtrlSetState($g_hInput_CustomRules, $GUI_ENABLE)
-		GUICtrlSetState($g_hCheckbox_SeparateQLV, $GUI_ENABLE)
-		GUICtrlSetBkColor($g_hInput_CustomRules, 0xFFFACD)
-		GUICtrlSetState($g_hCheckbox_DuKich, $GUI_ENABLE)
-		GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_ENABLE)
-		GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_ENABLE)
 	Else
 		GUICtrlSetData($g_hButton_Start, "DỪNG TOOL")
 		GUICtrlSetBkColor($g_hButton_Start, 0xFF4141)
-		GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-
-		; KHÓA TOÀN BỘ 100% KHI TOOL ĐANG CHẠY (CHỐNG BẤM NHẦM)
-		GUICtrlSetState($g_hInput_CustomRules, $GUI_DISABLE)
-		GUICtrlSetBkColor($g_hInput_CustomRules, 0xE0E0E0)
-		GUICtrlSetState($g_hCheckbox_SeparateQLV, $GUI_DISABLE)
-		GUICtrlSetState($g_hCheckbox_ContinuousMode, $GUI_DISABLE)
-		GUICtrlSetState($g_hCheckbox_ReverseLogic, $GUI_DISABLE)
-		GUICtrlSetState($g_hCheckbox_DuKich, $GUI_DISABLE)
-		GUICtrlSetState($g_hCheckbox_Blacklist, $GUI_DISABLE)
-		GUICtrlSetState($g_hInput_Blacklist, $GUI_DISABLE)
 	EndIf
-EndFunc   ;==>_SetControlsState
+EndFunc
 Func _UpdateProfitLabel()
 	GUICtrlSetData($g_hLabel_Profit, _FormatNumber($g_fTotalProfit) & " VND")
 	If $g_fTotalProfit > 0 Then
@@ -3111,36 +2979,74 @@ Func _FormatNumber($fNumber)
 EndFunc   ;==>_FormatNumber
 Func WM_COMMAND_Handler($hWnd, $iMsg, $wParam, $lParam)
 	#forceref $hWnd, $iMsg, $lParam
-	Local $iCmd = BitShift($wParam, 16)
-	Local $iCtrlID = BitAND($wParam, 0xFFFF)
 
-	If $iCmd = $EN_CHANGE Then
+	; Dùng WinAPI để tách tín hiệu chuẩn 100% trên mọi bản Windows (Khắc phục lỗi BitShift)
+	Local $iCmd = _WinAPI_HiWord($wParam)
+	Local $iCtrlID = _WinAPI_LoWord($wParam)
+
+	; 768 chính là tín hiệu EN_CHANGE: Bắt tức thì mỗi khi có 1 thay đổi nhỏ nhất trong ô
+	If $iCmd = 768 Then
 		Switch $iCtrlID
-			Case $g_hInput_CustomRules, $g_hInput_CustomQLV_Edit, $g_hCheckbox_ContinuousMode, $g_hCheckbox_ReverseLogic, $g_hInput_Blacklist
-				; ĐÃ XÓA SẠCH LỆNH _FullBacktest() Ở ĐÂY ĐỂ CHỐNG CHỚP GIẬT
-				$g_bNeedAutoSave = True
-				$g_hAutoSaveTimer = TimerInit()
+			; 1. NHÓM CÁC Ô NHẬP TIỀN (Nhảy dấu chấm ngay khi gõ)
+			Case $g_hInput_InitialCapital, $g_hInput_InitialBet, $g_hInput_TakeProfit, $g_hInput_TrailingStop, $g_hInput_StopLoss, _
+			     $g_hInput_DailyTarget, $g_hInput_DailyTrailing, $g_hInput_DailyStopLoss
 
-			Case $g_hCheckbox_Blacklist_IgnoreRunning
-				IniWrite($g_sIniPath, "Profile_" & $g_sCurrentLoadedProfile, "Opt_BlacklistIgnoreRun", (GUICtrlRead($g_hCheckbox_Blacklist_IgnoreRunning) = $GUI_CHECKED) ? 1 : 0)
-
-			Case $g_hInput_InitialCapital, $g_hInput_InitialBet, $g_hInput_TakeProfit, $g_hInput_StopLoss
 				If Not $g_bIsFormatting Then
 					$g_bIsFormatting = True
 					Local $sText = GUICtrlRead($iCtrlID)
-					Local $sRaw = StringRegExpReplace($sText, "[^0-9]", "")
-					If $sRaw = "" Then $sRaw = "0"
-					Local $sNew = _FormatNumber($sRaw)
 
-					If $sText <> $sNew Then
-						GUICtrlSetData($iCtrlID, $sNew)
-						GUICtrlSendMsg($iCtrlID, $EM_SETSEL, StringLen($sNew), StringLen($sNew))
+					If $sText <> "" And $sText <> "-" Then
+						Local $bIsNegative = (StringLeft($sText, 1) == "-")
+						; Lọc lấy đúng số
+						Local $sRaw = StringRegExpReplace($sText, "[^0-9]", "")
+
+						If $sRaw <> "" Then
+							; Xóa số 0 thừa ở đầu và chèn dấu chấm phân cách hàng ngàn
+							$sRaw = StringRegExpReplace($sRaw, "^0+(?!$)", "")
+							Local $sNew = StringRegExpReplace($sRaw, '(\d)(?=(\d{3})+(?!\d))', '$1.')
+							If $bIsNegative Then $sNew = "-" & $sNew
+
+							; Cập nhật ngay lập tức nếu có thay đổi
+							If $sText <> $sNew Then
+								GUICtrlSetData($iCtrlID, $sNew)
+								; Ép con trỏ nháy chuột nhảy về cuối cùng để gõ tiếp mượt mà
+								Local $iLen = StringLen($sNew)
+								GUICtrlSendMsg($iCtrlID, 0x00B1, $iLen, $iLen)
+							EndIf
+						EndIf
 					EndIf
+
+                    ; CHÈN DÒNG NÀY ĐỂ KHI GÕ "GIÁ TRỊ CƯỢC", MA TRẬN LED TỰ NHẢY SỐ TỨC THÌ
+; Gộp chung cả 3 ô: Giá trị cược, Số hàng, và Chuỗi cược vào sự kiện Live Update
+    If $iCtrlID == $g_hInput_InitialBet Or $iCtrlID == $g_hInput_XD_MaxRows Or $iCtrlID == $g_hInput_XD_Seq Then _UpdateXocDiaGridUI()
+
 					$g_bIsFormatting = False
 
+					; Tự động lưu file cấu hình ngầm
 					$g_bNeedAutoSave = True
 					$g_hAutoSaveTimer = TimerInit()
 				EndIf
+
+			; 2. NHÓM CẤU HÌNH KHÁC (Chỉ cần Auto-save, không cần dấu chấm)
+Case $g_hInput_XD_Seq, $g_hInput_CustomRules, $g_hInput_CustomQLV_Edit, _
+					$g_hInput_BankerX, $g_hInput_BankerY, $g_hInput_PlayerX, $g_hInput_PlayerY, $g_hInput_TieX, $g_hInput_TieY, _
+					$g_hInput_ResultX1, $g_hInput_ResultY1, $g_hInput_ResultX2, $g_hInput_ResultY2, _
+					$g_hInput_BankerColor, $g_hInput_PlayerColor, $g_hInput_TieColor, $g_hInput_Shade_Result, _
+					$g_hInput_BetTimeColor, $g_hInput_BetTimeX1, $g_hInput_BetTimeY1, $g_hInput_BetTimeX2, $g_hInput_BetTimeY2, $g_hInput_Shade_Timer, _
+					$g_hInput_DuKich_WinTable, $g_hInput_DuKich_LossTable, $g_hInput_DuKich_RestTime, $g_hCheckbox_DuKichDaBan, _
+					$g_hInput_LimitBtnX, $g_hInput_LimitBtnY, $g_hInput_Limit10_500X, $g_hInput_Limit10_500Y, $g_hInput_Limit20_50KX, $g_hInput_Limit20_50KY, $g_hInput_LimitConfirmX, $g_hInput_LimitConfirmY
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
+
+
+					; TẠO CASE RIÊNG CHO CÁC NÚT NGHỈ/DỪNG ĐỂ KHÔNG BỊ LỖI CÚ PHÁP
+			Case $g_hRadio_Action_Stop, $g_hRadio_Action_PauseMin, $g_hRadio_Action_PauseHand, $g_hInput_Action_PauseMin, $g_hInput_Action_PauseHand
+				$g_bNeedAutoSave = True
+				$g_hAutoSaveTimer = TimerInit()
+
+
+				; Gọi thẳng cập nhật Ma Trận nếu người dùng đang gõ ở ô cấu hình Xóc Đĩa
+If $iCtrlID == $g_hInput_XD_Seq Or $iCtrlID == $g_hInput_XD_MaxRows Then _UpdateXocDiaGridUI()
 		EndSwitch
 	EndIf
 	Return $GUI_RUNDEFMSG
@@ -3311,17 +3217,19 @@ Func _SaveCustomQLV()
 	Local $sName = InputBox("Lưu/Sửa Mẫu QLV", "Đặt tên cho mẫu (nhập tên cũ để ghi đè):", "", "", 250, 130)
 	If @error Or $sName = "" Then Return
 
-	; Chuẩn hóa nội dung để lưu trên 1 dòng
+	; Chuẩn hóa nội dung để lưu trên 1 dòng an toàn
 	Local $sContentToSave = StringReplace($sCurrentContent, @CRLF, "|NL|")
 
 	; Ghi vào file ini
 	IniWrite($g_sIniPath, "UserQLV", $sName, $sContentToSave)
 
-	MsgBox(64, "Thành công", "Đã lưu mẫu '" & $sName & "'.")
-	_PopulateQLVList
-	GUICtrlSetData($g_hCombo_QLV_Presets, $sName) ; Chọn mẫu vừa lưu
-EndFunc   ;==>_SaveCustomQLV
+	MsgBox(64, "Thành công", "Đã lưu mẫu QLV: '" & $sName & "'.")
 
+	; ---> ĐÃ SỬA LỖI: THÊM DẤU () ĐỂ TOOL KHÔNG BỊ VĂNG <---
+	_PopulateQLVList()
+
+	GUICtrlSetData($g_hCombo_QLV_Presets, $sName) ; Tự động chọn mẫu vừa lưu
+EndFunc   ;==>_SaveCustomQLV
 Func _DeleteCustomQLV()
 	Local $sSelected = GUICtrlRead($g_hCombo_QLV_Presets)
 
@@ -3494,17 +3402,49 @@ Func _MasterSave($sProfileName, $bIsAutoSave = False)
 	Local $sSec = "Profile_" & $sProfileName
 
 	; ==========================================
+	; --- LƯU CẤU HÌNH DU KÍCH 12 BÀN ---
+	IniWrite($g_sIniPath, $sSec, "ChkDuKichDaBan", GUICtrlRead($g_hCheckbox_DuKichDaBan))
+	IniWrite($g_sIniPath, $sSec, "ChkSanBanMoi", GUICtrlRead($g_hCheckbox_SanBanMoi))
+	IniWrite($g_sIniPath, $sSec, "FirstCellX", GUICtrlRead($g_hInput_FirstCellX))
+	IniWrite($g_sIniPath, $sSec, "FirstCellY", GUICtrlRead($g_hInput_FirstCellY))
+	IniWrite($g_sIniPath, $sSec, "DuKichWin", GUICtrlRead($g_hInput_DuKich_WinTable))
+	IniWrite($g_sIniPath, $sSec, "DuKichLoss", GUICtrlRead($g_hInput_DuKich_LossTable))
+	IniWrite($g_sIniPath, $sSec, "DuKichRest", GUICtrlRead($g_hInput_DuKich_RestTime))
+	IniWrite($g_sIniPath, $sSec, "ChkBaccaratLaser", GUICtrlRead($g_hCheckbox_BaccaratLaser))
+; LƯU TRẠNG THÁI CHẠM MỐC NGHỈ/DỪNG
+	IniWrite($g_sIniPath, $sSec, "ActionStop", GUICtrlRead($g_hRadio_Action_Stop))
+	IniWrite($g_sIniPath, $sSec, "ActionPauseMin", GUICtrlRead($g_hRadio_Action_PauseMin))
+	IniWrite($g_sIniPath, $sSec, "ActionPauseHand", GUICtrlRead($g_hRadio_Action_PauseHand))
+	IniWrite($g_sIniPath, $sSec, "PauseMinVal", GUICtrlRead($g_hInput_Action_PauseMin))
+	IniWrite($g_sIniPath, $sSec, "PauseHandVal", GUICtrlRead($g_hInput_Action_PauseHand))
+	; --- LƯU CẤU HÌNH XÓC ĐĨA VIP ---
+	IniWrite($g_sIniPath, $sSec, "ChkXocDiaVIP", GUICtrlRead($g_hCheckbox_XocDiaVIP))
+	IniWrite($g_sIniPath, $sSec, "XD_Seq", GUICtrlRead($g_hInput_XD_Seq))
+	IniWrite($g_sIniPath, $sSec, "XD_MaxRows", GUICtrlRead($g_hInput_XD_MaxRows))
+	IniWrite($g_sIniPath, $sSec, "LimitBtnX", GUICtrlRead($g_hInput_LimitBtnX))
+	IniWrite($g_sIniPath, $sSec, "LimitBtnY", GUICtrlRead($g_hInput_LimitBtnY))
+	IniWrite($g_sIniPath, $sSec, "Limit10_500X", GUICtrlRead($g_hInput_Limit10_500X))
+	IniWrite($g_sIniPath, $sSec, "Limit10_500Y", GUICtrlRead($g_hInput_Limit10_500Y))
+	IniWrite($g_sIniPath, $sSec, "Limit20_50KX", GUICtrlRead($g_hInput_Limit20_50KX))
+	IniWrite($g_sIniPath, $sSec, "Limit20_50KY", GUICtrlRead($g_hInput_Limit20_50KY))
+	IniWrite($g_sIniPath, $sSec, "LimitConfirmX", GUICtrlRead($g_hInput_LimitConfirmX))
+	IniWrite($g_sIniPath, $sSec, "LimitConfirmY", GUICtrlRead($g_hInput_LimitConfirmY))
+	For $i = 0 To 11
+		IniWrite($g_sIniPath, $sSec, "AnchorX_" & $i, GUICtrlRead($g_aInput_AnchorX[$i]))
+		IniWrite($g_sIniPath, $sSec, "AnchorY_" & $i, GUICtrlRead($g_aInput_AnchorY[$i]))
+	Next
+IniWrite($g_sIniPath, $sSec, "RadarRedColor", GUICtrlRead($g_hInput_RadarRed))
+	IniWrite($g_sIniPath, $sSec, "RadarBlueColor", GUICtrlRead($g_hInput_RadarBlue))
 	; 1. LƯU TỌA ĐỘ, MÀU SẮC & CHIP
 	; ==========================================
-	IniWrite($g_sIniPath, $sSec, "GameMode", GUICtrlRead($g_hCombo_GameMode))
 	IniWrite($g_sIniPath, $sSec, "WindowClass", GUICtrlRead($g_hInput_WindowClass))
 
 	IniWrite($g_sIniPath, $sSec, "BankerX", GUICtrlRead($g_hInput_BankerX))
 	IniWrite($g_sIniPath, $sSec, "BankerY", GUICtrlRead($g_hInput_BankerY))
-IniWrite($g_sIniPath, $sSec, "PlayerX", GUICtrlRead($g_hInput_PlayerX))
+	IniWrite($g_sIniPath, $sSec, "PlayerX", GUICtrlRead($g_hInput_PlayerX))
 	IniWrite($g_sIniPath, $sSec, "PlayerY", GUICtrlRead($g_hInput_PlayerY))
-	IniWrite($g_sIniPath, $sSec, "TieX", GUICtrlRead($g_hInput_TieX)) ; <--- Thêm
-	IniWrite($g_sIniPath, $sSec, "TieY", GUICtrlRead($g_hInput_TieY)) ; <--- Thêm
+	IniWrite($g_sIniPath, $sSec, "TieX", GUICtrlRead($g_hInput_TieX))
+	IniWrite($g_sIniPath, $sSec, "TieY", GUICtrlRead($g_hInput_TieY))
 	IniWrite($g_sIniPath, $sSec, "ResultX1", GUICtrlRead($g_hInput_ResultX1))
 	IniWrite($g_sIniPath, $sSec, "ResultY1", GUICtrlRead($g_hInput_ResultY1))
 	IniWrite($g_sIniPath, $sSec, "ResultX2", GUICtrlRead($g_hInput_ResultX2))
@@ -3521,7 +3461,7 @@ IniWrite($g_sIniPath, $sSec, "PlayerX", GUICtrlRead($g_hInput_PlayerX))
 	IniWrite($g_sIniPath, $sSec, "BetTimeY2", GUICtrlRead($g_hInput_BetTimeY2))
 	IniWrite($g_sIniPath, $sSec, "ShadeTimer", GUICtrlRead($g_hInput_Shade_Timer))
 	IniWrite($g_sIniPath, $sSec, "CustomQLVTable", StringReplace(GUICtrlRead($g_hInput_CustomQLV_Edit), @CRLF, "|NL|"))
-	IniWrite($g_sIniPath, $sSec, "QLVPreset", GUICtrlRead($g_hCombo_QLV_Presets)) ; <--- THÊM DÒNG NÀY
+	IniWrite($g_sIniPath, $sSec, "QLVPreset", GUICtrlRead($g_hCombo_QLV_Presets))
 	For $i = 0 To 4
 		IniWrite($g_sIniPath, $sSec, "ChipEnabled_" & $i, GUICtrlRead($g_aCheckbox_ChipEnabled[$i]))
 		IniWrite($g_sIniPath, $sSec, "ChipValue_" & $i, GUICtrlRead($g_aInput_ChipValue[$i]))
@@ -3530,53 +3470,82 @@ IniWrite($g_sIniPath, $sSec, "PlayerX", GUICtrlRead($g_hInput_PlayerX))
 	Next
 
 	; ==========================================
-	; 2. LƯU MỌI GÕ PHÍM & LỰA CHỌN (TIỀN NONG)
+	; 2. LƯU MỌI LỰA CHỌN (TIỀN NONG & CƯỢC)
 	; ==========================================
 	IniWrite($g_sIniPath, $sSec, "CustomRules", StringReplace(GUICtrlRead($g_hInput_CustomRules), @CRLF, "|NL|"))
 	IniWrite($g_sIniPath, $sSec, "Capital", GUICtrlRead($g_hInput_InitialCapital))
 	IniWrite($g_sIniPath, $sSec, "BaseBet", GUICtrlRead($g_hInput_InitialBet))
 	IniWrite($g_sIniPath, $sSec, "TakeProfit", GUICtrlRead($g_hInput_TakeProfit))
 	IniWrite($g_sIniPath, $sSec, "StopLoss", GUICtrlRead($g_hInput_StopLoss))
-	IniWrite($g_sIniPath, $sSec, "TrailingStop", GUICtrlRead($g_hInput_TrailingStop))
+
+	IniWrite($g_sIniPath, $sSec, "ChkDailyShield", GUICtrlRead($g_hCheckbox_DailyShield))
+	IniWrite($g_sIniPath, $sSec, "DailyTarget", GUICtrlRead($g_hInput_DailyTarget))
+	IniWrite($g_sIniPath, $sSec, "DailyTrailing", GUICtrlRead($g_hInput_DailyTrailing))
+	IniWrite($g_sIniPath, $sSec, "DailyStopLoss", GUICtrlRead($g_hInput_DailyStopLoss))
 
 	IniWrite($g_sIniPath, $sSec, "TargetPos", GUICtrlRead($g_hInput_TargetProfitPercent))
 	IniWrite($g_sIniPath, $sSec, "TargetNeg", GUICtrlRead($g_hInput_StopLossPercent))
 	IniWrite($g_sIniPath, $sSec, "LaiKepPercent", GUICtrlRead($g_hInput_LaiKepPercent))
 
 	IniWrite($g_sIniPath, $sSec, "ChkCompound", GUICtrlRead($g_hCheckbox_LaiKepVIP))
-	IniWrite($g_sIniPath, $sSec, "ChkCont", GUICtrlRead($g_hCheckbox_ContinuousMode))
-	IniWrite($g_sIniPath, $sSec, "ChkRev", GUICtrlRead($g_hCheckbox_ReverseLogic))
-	IniWrite($g_sIniPath, $sSec, "ChkDuKich", GUICtrlRead($g_hCheckbox_DuKich))
 	IniWrite($g_sIniPath, $sSec, "ChkSepQLV", GUICtrlRead($g_hCheckbox_SeparateQLV))
-    ; --- LƯU CẤU HÌNH TÙY CHỌN CLICK ---
+
+	; --- LƯU CẤU HÌNH TÙY CHỌN CLICK ---
 	Local $sMode = "Mouse"
 	If GUICtrlRead($g_hRadio_ClickMode_Control_Main) = $GUI_CHECKED Then $sMode = "Control"
 	IniWrite($g_sIniPath, $sSec, "ClickMode", $sMode)
-	IniWrite($g_sIniPath, $sSec, "WinMode", GUICtrlRead($g_hCombo_WinMode))
 	IniWrite($g_sIniPath, $sSec, "ClickDelay", GUICtrlRead($g_hInput_ClickDelay_Main))
 	IniWrite($g_sIniPath, $sSec, "MouseSpeed", GUICtrlRead($g_hInput_MouseSpeed))
+
+	; --- LƯU CẤU HÌNH XÓC ĐĨA VIP ---
+	IniWrite($g_sIniPath, $sSec, "ChkXocDiaVIP", GUICtrlRead($g_hCheckbox_XocDiaVIP))
+	IniWrite($g_sIniPath, $sSec, "LimitBtnX", GUICtrlRead($g_hInput_LimitBtnX))
+	IniWrite($g_sIniPath, $sSec, "LimitBtnY", GUICtrlRead($g_hInput_LimitBtnY))
+	IniWrite($g_sIniPath, $sSec, "Limit10_500X", GUICtrlRead($g_hInput_Limit10_500X))
+	IniWrite($g_sIniPath, $sSec, "Limit10_500Y", GUICtrlRead($g_hInput_Limit10_500Y))
+	IniWrite($g_sIniPath, $sSec, "Limit20_50KX", GUICtrlRead($g_hInput_Limit20_50KX))
+	IniWrite($g_sIniPath, $sSec, "Limit20_50KY", GUICtrlRead($g_hInput_Limit20_50KY))
+	IniWrite($g_sIniPath, $sSec, "LimitConfirmX", GUICtrlRead($g_hInput_LimitConfirmX))
+	IniWrite($g_sIniPath, $sSec, "LimitConfirmY", GUICtrlRead($g_hInput_LimitConfirmY))
+
 	If $bIsAutoSave Then
 		_UpdateStatus("🔄 Đã tự động lưu lại toàn bộ thay đổi cho sảnh: " & $sProfileName)
 	Else
 		$g_sCurrentLoadedProfile = $sProfileName
 		_UpdateStatus("💾 Đã lưu thành công 100% các thiết lập cho sảnh mới!")
 	EndIf
-	Return True
-EndFunc
 
+	IniWrite($g_sIniPath, "Settings", "LastProfile", $sProfileName)
+
+	Return True
+EndFunc   ;==>_MasterSave
 Func _LoadSelectedProfile($sProfileName)
 	If $sProfileName = "" Then Return False
 	Local $sSec = "Profile_" & $sProfileName
 
 	; 1. NẠP TỌA ĐỘ
-	GUICtrlSetData($g_hCombo_GameMode, IniRead($g_sIniPath, $sSec, "GameMode", "Baccarat Thường"))
 	GUICtrlSetData($g_hInput_WindowClass, IniRead($g_sIniPath, $sSec, "WindowClass", "Chrome_WidgetWin_1"))
 	GUICtrlSetData($g_hInput_BankerX, IniRead($g_sIniPath, $sSec, "BankerX", ""))
 	GUICtrlSetData($g_hInput_BankerY, IniRead($g_sIniPath, $sSec, "BankerY", ""))
-    GUICtrlSetData($g_hInput_PlayerX, IniRead($g_sIniPath, $sSec, "PlayerX", ""))
+	GUICtrlSetData($g_hInput_PlayerX, IniRead($g_sIniPath, $sSec, "PlayerX", ""))
 	GUICtrlSetData($g_hInput_PlayerY, IniRead($g_sIniPath, $sSec, "PlayerY", ""))
-	GUICtrlSetData($g_hInput_TieX, IniRead($g_sIniPath, $sSec, "TieX", "")) ; <--- Thêm
-	GUICtrlSetData($g_hInput_TieY, IniRead($g_sIniPath, $sSec, "TieY", "")) ; <--- Thêm
+	GUICtrlSetData($g_hInput_TieX, IniRead($g_sIniPath, $sSec, "TieX", ""))
+	GUICtrlSetData($g_hInput_TieY, IniRead($g_sIniPath, $sSec, "TieY", ""))
+	GUICtrlSetState($g_hCheckbox_BaccaratLaser, Number(IniRead($g_sIniPath, $sSec, "ChkBaccaratLaser", 4)))
+
+	; --- NẠP CẤU HÌNH XÓC ĐĨA VIP ---
+	GUICtrlSetState($g_hCheckbox_XocDiaVIP, Number(IniRead($g_sIniPath, $sSec, "ChkXocDiaVIP", 4)))
+	GUICtrlSetData($g_hInput_XD_Seq, IniRead($g_sIniPath, $sSec, "XD_Seq", "1, 2, 4, 8, 17, 35, 75"))
+	GUICtrlSetData($g_hInput_XD_MaxRows, IniRead($g_sIniPath, $sSec, "XD_MaxRows", "5"))
+	GUICtrlSetData($g_hInput_LimitBtnX, IniRead($g_sIniPath, $sSec, "LimitBtnX", ""))
+	GUICtrlSetData($g_hInput_LimitBtnY, IniRead($g_sIniPath, $sSec, "LimitBtnY", ""))
+	GUICtrlSetData($g_hInput_Limit10_500X, IniRead($g_sIniPath, $sSec, "Limit10_500X", ""))
+	GUICtrlSetData($g_hInput_Limit10_500Y, IniRead($g_sIniPath, $sSec, "Limit10_500Y", ""))
+	GUICtrlSetData($g_hInput_Limit20_50KX, IniRead($g_sIniPath, $sSec, "Limit20_50KX", ""))
+	GUICtrlSetData($g_hInput_Limit20_50KY, IniRead($g_sIniPath, $sSec, "Limit20_50KY", ""))
+	GUICtrlSetData($g_hInput_LimitConfirmX, IniRead($g_sIniPath, $sSec, "LimitConfirmX", ""))
+	GUICtrlSetData($g_hInput_LimitConfirmY, IniRead($g_sIniPath, $sSec, "LimitConfirmY", ""))
+
 	GUICtrlSetData($g_hInput_ResultX1, IniRead($g_sIniPath, $sSec, "ResultX1", ""))
 	GUICtrlSetData($g_hInput_ResultY1, IniRead($g_sIniPath, $sSec, "ResultY1", ""))
 	GUICtrlSetData($g_hInput_ResultX2, IniRead($g_sIniPath, $sSec, "ResultX2", ""))
@@ -3592,13 +3561,30 @@ Func _LoadSelectedProfile($sProfileName)
 	GUICtrlSetData($g_hInput_BetTimeX2, IniRead($g_sIniPath, $sSec, "BetTimeX2", ""))
 	GUICtrlSetData($g_hInput_BetTimeY2, IniRead($g_sIniPath, $sSec, "BetTimeY2", ""))
 	GUICtrlSetData($g_hInput_Shade_Timer, IniRead($g_sIniPath, $sSec, "ShadeTimer", "20"))
-    GUICtrlSetData($g_hInput_CustomQLV_Edit, StringReplace(IniRead($g_sIniPath, $sSec, "CustomQLVTable", "0-1-0-1|NL|1-2-0-2"), "|NL|", @CRLF))
-	GUICtrlSetData($g_hCombo_QLV_Presets, IniRead($g_sIniPath, $sSec, "QLVPreset", "Tùy chỉnh")) ; <--- THÊM DÒNG NÀY
+
+	GUICtrlSetData($g_hInput_CustomQLV_Edit, StringReplace(IniRead($g_sIniPath, $sSec, "CustomQLVTable", "0-1-0-1|NL|1-2-0-2"), "|NL|", @CRLF))
+	GUICtrlSetData($g_hCombo_QLV_Presets, IniRead($g_sIniPath, $sSec, "QLVPreset", "Tùy chỉnh"))
 	For $i = 0 To 4
 		GUICtrlSetState($g_aCheckbox_ChipEnabled[$i], Number(IniRead($g_sIniPath, $sSec, "ChipEnabled_" & $i, 1)))
 		GUICtrlSetData($g_aInput_ChipValue[$i], IniRead($g_sIniPath, $sSec, "ChipValue_" & $i, ""))
 		GUICtrlSetData($g_aInput_ChipX[$i], IniRead($g_sIniPath, $sSec, "ChipX_" & $i, ""))
 		GUICtrlSetData($g_aInput_ChipY[$i], IniRead($g_sIniPath, $sSec, "ChipY_" & $i, ""))
+	Next
+
+	GUICtrlSetData($g_hInput_RadarRed, IniRead($g_sIniPath, $sSec, "RadarRedColor", ""))
+	GUICtrlSetData($g_hInput_RadarBlue, IniRead($g_sIniPath, $sSec, "RadarBlueColor", ""))
+
+	; --- NẠP CẤU HÌNH DU KÍCH 12 BÀN ---
+	GUICtrlSetState($g_hCheckbox_DuKichDaBan, Number(IniRead($g_sIniPath, $sSec, "ChkDuKichDaBan", 4)))
+	GUICtrlSetState($g_hCheckbox_SanBanMoi, Number(IniRead($g_sIniPath, $sSec, "ChkSanBanMoi", 4)))
+	GUICtrlSetData($g_hInput_FirstCellX, IniRead($g_sIniPath, $sSec, "FirstCellX", ""))
+	GUICtrlSetData($g_hInput_FirstCellY, IniRead($g_sIniPath, $sSec, "FirstCellY", ""))
+	GUICtrlSetData($g_hInput_DuKich_WinTable, IniRead($g_sIniPath, $sSec, "DuKichWin", "2"))
+	GUICtrlSetData($g_hInput_DuKich_LossTable, IniRead($g_sIniPath, $sSec, "DuKichLoss", "3"))
+	GUICtrlSetData($g_hInput_DuKich_RestTime, IniRead($g_sIniPath, $sSec, "DuKichRest", "15"))
+	For $i = 0 To 11
+		GUICtrlSetData($g_aInput_AnchorX[$i], IniRead($g_sIniPath, $sSec, "AnchorX_" & $i, ""))
+		GUICtrlSetData($g_aInput_AnchorY[$i], IniRead($g_sIniPath, $sSec, "AnchorY_" & $i, ""))
 	Next
 
 	; 2. NẠP TIỀN NONG & CÔNG THỨC
@@ -3608,20 +3594,28 @@ Func _LoadSelectedProfile($sProfileName)
 	GUICtrlSetData($g_hInput_InitialBet, IniRead($g_sIniPath, $sSec, "BaseBet", "50.000"))
 	GUICtrlSetData($g_hInput_TakeProfit, IniRead($g_sIniPath, $sSec, "TakeProfit", "1000000"))
 	GUICtrlSetData($g_hInput_StopLoss, IniRead($g_sIniPath, $sSec, "StopLoss", "-2000000"))
-	GUICtrlSetData($g_hInput_TrailingStop, IniRead($g_sIniPath, $sSec, "TrailingStop", "50000"))
+
+	; --- FIX: NẠP LẠI TRẠNG THÁI NGHỈ/DỪNG THEO TỪNG TÊN KHÁCH/CẤU HÌNH ---
+	GUICtrlSetState($g_hRadio_Action_Stop, Number(IniRead($g_sIniPath, $sSec, "ActionStop", $GUI_CHECKED)))
+	GUICtrlSetState($g_hRadio_Action_PauseMin, Number(IniRead($g_sIniPath, $sSec, "ActionPauseMin", 4)))
+	GUICtrlSetState($g_hRadio_Action_PauseHand, Number(IniRead($g_sIniPath, $sSec, "ActionPauseHand", 4)))
+	GUICtrlSetData($g_hInput_Action_PauseMin, IniRead($g_sIniPath, $sSec, "PauseMinVal", "15"))
+	GUICtrlSetData($g_hInput_Action_PauseHand, IniRead($g_sIniPath, $sSec, "PauseHandVal", "5"))
+
+	GUICtrlSetState($g_hCheckbox_DailyShield, Number(IniRead($g_sIniPath, $sSec, "ChkDailyShield", 4)))
+	GUICtrlSetData($g_hInput_DailyTarget, IniRead($g_sIniPath, $sSec, "DailyTarget", "1.000.000"))
+	GUICtrlSetData($g_hInput_DailyTrailing, IniRead($g_sIniPath, $sSec, "DailyTrailing", "200.000"))
+	GUICtrlSetData($g_hInput_DailyStopLoss, IniRead($g_sIniPath, $sSec, "DailyStopLoss", "-1.000.000"))
 
 	GUICtrlSetData($g_hInput_TargetProfitPercent, IniRead($g_sIniPath, $sSec, "TargetPos", "10"))
 	GUICtrlSetData($g_hInput_StopLossPercent, IniRead($g_sIniPath, $sSec, "TargetNeg", "20"))
 	GUICtrlSetData($g_hInput_LaiKepPercent, IniRead($g_sIniPath, $sSec, "LaiKepPercent", "5"))
 
 	GUICtrlSetState($g_hCheckbox_LaiKepVIP, Number(IniRead($g_sIniPath, $sSec, "ChkCompound", 4)))
-	GUICtrlSetState($g_hCheckbox_ContinuousMode, Number(IniRead($g_sIniPath, $sSec, "ChkCont", 4)))
-	GUICtrlSetState($g_hCheckbox_ReverseLogic, Number(IniRead($g_sIniPath, $sSec, "ChkRev", 4)))
-	GUICtrlSetState($g_hCheckbox_DuKich, Number(IniRead($g_sIniPath, $sSec, "ChkDuKich", 4)))
 	GUICtrlSetState($g_hCheckbox_SeparateQLV, Number(IniRead($g_sIniPath, $sSec, "ChkSepQLV", 4)))
-; --- NẠP CẤU HÌNH TÙY CHỌN CLICK ---
+
+	; --- NẠP CẤU HÌNH TÙY CHỌN CLICK ---
 	Local $sMode = IniRead($g_sIniPath, $sSec, "ClickMode", "Nhanh")
-	GUICtrlSetData($g_hCombo_WinMode, IniRead($g_sIniPath, $sSec, "WinMode", "Thu nhỏ khi cược -> Bật lên"))
 	If $sMode == "Mouse" Then
 		GUICtrlSetState($g_hRadio_ClickMode_Mouse_Main, $GUI_CHECKED)
 	Else
@@ -3629,10 +3623,23 @@ Func _LoadSelectedProfile($sProfileName)
 	EndIf
 	GUICtrlSetData($g_hInput_ClickDelay_Main, IniRead($g_sIniPath, $sSec, "ClickDelay", "10"))
 	GUICtrlSetData($g_hInput_MouseSpeed, IniRead($g_sIniPath, $sSec, "MouseSpeed", "0"))
+
+	; --- NẠP CẤU HÌNH XÓC ĐĨA VIP ---
+	GUICtrlSetState($g_hCheckbox_XocDiaVIP, Number(IniRead($g_sIniPath, $sSec, "ChkXocDiaVIP", 4)))
+	GUICtrlSetData($g_hInput_LimitBtnX, IniRead($g_sIniPath, $sSec, "LimitBtnX", ""))
+	GUICtrlSetData($g_hInput_LimitBtnY, IniRead($g_sIniPath, $sSec, "LimitBtnY", ""))
+	GUICtrlSetData($g_hInput_Limit10_500X, IniRead($g_sIniPath, $sSec, "Limit10_500X", ""))
+	GUICtrlSetData($g_hInput_Limit10_500Y, IniRead($g_sIniPath, $sSec, "Limit10_500Y", ""))
+	GUICtrlSetData($g_hInput_Limit20_50KX, IniRead($g_sIniPath, $sSec, "Limit20_50KX", ""))
+	GUICtrlSetData($g_hInput_Limit20_50KY, IniRead($g_sIniPath, $sSec, "Limit20_50KY", ""))
+	GUICtrlSetData($g_hInput_LimitConfirmX, IniRead($g_sIniPath, $sSec, "LimitConfirmX", ""))
+	GUICtrlSetData($g_hInput_LimitConfirmY, IniRead($g_sIniPath, $sSec, "LimitConfirmY", ""))
+
 	$g_sCurrentLoadedProfile = $sProfileName
 	_UpdateStatus("✅ Đã nạp thành công 100% dữ liệu của sảnh: " & $sProfileName)
+    _ToggleGameModeUI()
 	Return True
-EndFunc
+EndFunc   ;==>_LoadSelectedProfile
 Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous_Param)
 	Local $aResult[3] = ["OBSERVE", "", 0]
 
@@ -3657,14 +3664,10 @@ Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous_Param)
 		ReDim $g_aRuleLevels[$aLines[0] + 10]
 	EndIf
 
-	; ========================================================================
-	; TRƯỜNG HỢP 1: ĐANG THEO DÂY (CHASE MODE)
-	; ========================================================================
 	If $g_iLastActiveRuleIndex > -1 Then
 		Local $iIdx = $g_iLastActiveRuleIndex
 		Local $iLevel = 0
 
-		; NHẬN DIỆN CHUẨN XÁC VỐN CHUNG / VỐN RIÊNG
 		If $bSepQLV Then
 			If $iIdx < UBound($g_aRuleLevels) Then $iLevel = $g_aRuleLevels[$iIdx]
 		Else
@@ -3696,19 +3699,14 @@ Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous_Param)
 				$g_iLastActiveRuleIndex = -1
 				$g_iCustomSeqStep = 0
 
-				If Not BitAND(GUICtrlRead($g_hCheckbox_ContinuousMode), $GUI_CHECKED) Then
-					$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
-					_UpdateStatus("⛔ Thua hết bảng vốn -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
-				EndIf
+				$g_iHistoryCutoffIndex = UBound($g_aDisplayHistory)
+				_UpdateStatus("⛔ Hết chuỗi lệnh -> Cắt cầu lịch sử -> Chờ tín hiệu mới.")
 				$g_iLastActiveRuleIndex = -1
 				$g_iCustomSeqStep = 0
 			EndIf
 		EndIf
 	EndIf
 
-	; ========================================================================
-	; TRƯỜNG HỢP 2: TÌM TÍN HIỆU MỚI (SCAN MODE)
-	; ========================================================================
 	For $i = 1 To $aLines[0]
 		Local $sLine = StringStripWS($aLines[$i], 8)
 		If $sLine = "" Then ContinueLoop
@@ -3729,31 +3727,27 @@ Func _Logic_Custom($iTotalHands, $iBetUnit_Global, $bContinuous_Param)
 
 		If $sHistoryNow = "" Then ContinueLoop
 
-		If _CheckBlacklist($sHistoryNow) Then
-			If StringRight($sHistoryNow, StringLen($sWaitSig)) = $sWaitSig Then
-				Local $iMyLevel = 0
-				If $bSepQLV Then
-					If ($i - 1) < UBound($g_aRuleLevels) Then $iMyLevel = $g_aRuleLevels[$i - 1]
-				Else
-					$iMyLevel = $g_iCapitalLevel
-				EndIf
-
-				Local $aQLV = _GetQLV_Params($iMyLevel)
-
-				$g_sCurrentRuleSignature = StringUpper($sWaitSig) & "-SEQ"
-				$g_iCustomSeqStep = 1
-
-				Local $sFirstChar = StringMid($sBetSeq, 1, 1)
-
-				$aResult[0] = "BET"
-				$aResult[1] = $sFirstChar
-				$aResult[2] = $aQLV[1]
-
-				$g_iLastActiveRuleIndex = $i - 1
-
-				_UpdateStatus("🎯 Khớp dòng " & $i & ": [" & $sWaitSig & "] -> Bắt đầu dây (Bước 1): " & $sFirstChar)
-				Return $aResult
+		If StringRight($sHistoryNow, StringLen($sWaitSig)) = $sWaitSig Then
+			Local $iMyLevel = 0
+			If $bSepQLV Then
+				If ($i - 1) < UBound($g_aRuleLevels) Then $iMyLevel = $g_aRuleLevels[$i - 1]
+			Else
+				$iMyLevel = $g_iCapitalLevel
 			EndIf
+
+			Local $aQLV = _GetQLV_Params($iMyLevel)
+
+			$g_iCustomSeqStep = 1
+			Local $sFirstChar = StringMid($sBetSeq, 1, 1)
+
+			$aResult[0] = "BET"
+			$aResult[1] = $sFirstChar
+			$aResult[2] = $aQLV[1]
+
+			$g_iLastActiveRuleIndex = $i - 1
+
+			_UpdateStatus("🎯 Khớp dòng " & $i & ": [" & $sWaitSig & "] -> Bắt đầu dây (Bước 1): " & $sFirstChar)
+			Return $aResult
 		EndIf
 	Next
 
@@ -3808,50 +3802,17 @@ Func _UpdateStatsUI()
 
 	_GUICtrlListView_EndUpdate($g_hListView_Stats)
 EndFunc   ;==>_UpdateStatsUI
-; --- HÀM KIỂM TRA BLACKLIST (Dùng cho Logic Custom) ---
-Func _CheckBlacklist($sHistoryToCheck)
-	; 1. Nếu chưa bật tính năng Blacklist thì cho qua luôn
-	If GUICtrlRead($g_hCheckbox_Blacklist) <> $GUI_CHECKED Then Return True
-
-	; 2. KIỂM TRA: CÓ ĐANG THEO DÂY KHÔNG?
-	Local $bIgnoreRunning = (GUICtrlRead($g_hCheckbox_Blacklist_IgnoreRunning) = $GUI_CHECKED)
-	Local $bIsBusy = False
-
-	If $g_iCapitalLevel > 0 Then $bIsBusy = True
-	If $g_iLastActiveRuleIndex > -1 Then $bIsBusy = True
-	If $g_iCustomSeqStep > 0 Then $bIsBusy = True
-
-	If $bIsBusy And $bIgnoreRunning Then Return True
-
-	; 3. LOGIC SO SÁNH BLACKLIST (PHÂN BIỆT RÕ 2 SẢNH)
-	Local $sBlacklistRaw = GUICtrlRead($g_hInput_Blacklist)
-	If $sBlacklistRaw = "" Then Return True
-
-	Local $sGameMode = GUICtrlRead($g_hCombo_GameMode) ; Lấy tên sảnh hiện tại
-	Local $aItems = StringSplit($sBlacklistRaw, ",")
-
-	For $i = 1 To $aItems[0]
-		Local $sBadItem = StringStripWS($aItems[$i], 8)
-		If $sBadItem = "" Then ContinueLoop
-
-		; NẾU KHÔNG PHẢI LONG LONG THÌ MỚI BỎ CHỮ "T" (HÒA)
-		If $sGameMode <> "Long Long (Evo)" Then
-			$sBadItem = StringReplace($sBadItem, "T", "")
-		EndIf
-
-		If StringRight($sHistoryToCheck, StringLen($sBadItem)) = $sBadItem Then
-			_UpdateStatus("⛔ Dính Blacklist [" & $sBadItem & "] -> NGƯNG (Chờ cầu đẹp)...")
-			Return False ; Chặn
-		EndIf
-	Next
-
-	Return True ; Cho phép đánh
-EndFunc
-
 Func _UpdateStatus($sText)
+	; Biến Static để nhớ nội dung đã hiển thị gần nhất, tránh spam
+	Local Static $sLastStatusText = ""
+
+	; Nếu nội dung giống hệt lần trước thì bỏ qua không ghi lại
+	If $sText == $sLastStatusText Then Return
+	$sLastStatusText = $sText
+
 	If $g_hGUI <> "" And $g_hGUI <> 0 Then
 		Local $sTitleID = ($g_sMyTableID <> "") ? (" - " & $g_sMyTableID) : ""
-		WinSetTitle($g_hGUI, "", "Tool-AIO_" & $g_sVersion & $g_sInstanceIdentifier & $sTitleID & " | " & $g_sCopyright)
+		WinSetTitle($g_hGUI, "", "Tool_AIO_" & $g_sVersion & $g_sInstanceIdentifier & $sTitleID & " | " & $g_sCopyright)
 	EndIf
 
 	; >>> ĐƯA NỘI DUNG LÊN TV SCREEN VÀ CHỐNG ĐƠ <<<
@@ -3859,12 +3820,11 @@ Func _UpdateStatus($sText)
 		Local $sTime = StringFormat("%02d:%02d:%02d", @HOUR, @MIN, @SEC)
 		Local $sCurrentText = GUICtrlRead($g_hEdit_ActivityLog)
 
-		; Nếu vượt quá 15,000 ký tự (khoảng 200 dòng), tự động xóa nửa phần trên (cũ nhất)
+		; Nếu vượt quá 15,000 ký tự, tự động xóa phần cũ nhất
 		If StringLen($sCurrentText) > 15000 Then
-			$sCurrentText = StringRight($sCurrentText, 8000) ; Giữ lại 8000 ký tự đuôi mới nhất
+			$sCurrentText = StringRight($sCurrentText, 8000)
 			GUICtrlSetData($g_hEdit_ActivityLog, $sCurrentText & @CRLF & "[" & $sTime & "] " & $sText & @CRLF)
 		Else
-			; Nếu chưa đầy thì dùng lệnh nối đuôi tốc độ cao
 			GUICtrlSetData($g_hEdit_ActivityLog, "[" & $sTime & "] " & $sText & @CRLF, 1)
 		EndIf
 	EndIf
@@ -3878,29 +3838,7 @@ Func _UpdateStatus($sText)
 		IniWrite($sStatusFile, "Status", "CurrentAction", $sText)
 	EndIf
 EndFunc   ;==>_UpdateStatus
-Func _CheckForUpdates()
-	; Chốt chặn an toàn: Không chạy update khi đang mở file code (.au3) để lập trình
-	If @Compiled = 0 Then Return
 
-	; ---> ĐÃ XÓA DÒNG "Đang kiểm tra phiên bản" ĐỂ NÓ KHÔNG LẢI NHẢI NỮA <---
-
-	; 1. Tải nội dung version.txt (1 = ép tải mới, bỏ qua cache)
-	Local $bRead = InetRead($g_sGithubVersionURL, 1)
-
-	; Nếu khách mất mạng thì im lặng thoát luôn, không spam lỗi ra màn hình
-	If @error Then Return
-
-	; 2. Đọc bản online và làm sạch ký tự thừa
-	Local $sOnlineVersion = StringStripWS(BinaryToString($bRead, 4), 8)
-
-	; 3. CHỈ HIỆN LÊN MÀN HÌNH KHI CÓ BẢN MỚI THẬT SỰ
-	If $sOnlineVersion <> "" And Number($sOnlineVersion) > Number($g_sVersion) Then
-		_UpdateStatus("🚀 Có bản mới v" & $sOnlineVersion & "! Hệ thống đang tự động tải...")
-		_SilentAutoUpdate($g_sDownloadURL)
-	EndIf
-
-	; ---> ĐÃ XÓA DÒNG BÁO "Đang là bản mới nhất" ĐỂ GIỮ SẠCH MÀN HÌNH TV <---
-EndFunc   ;==>_CheckForUpdates
 Func _SilentAutoUpdate($sDownloadLink)
 	Local $sNewExePath = @ScriptDir & "\Update_Temp.exe"
 	Local $sBatPath = @TempDir & "\updater.bat"
@@ -4209,7 +4147,9 @@ EndFunc   ;==>_RefreshProfitDisplay
 Func _RefreshVolumeDisplay()
 	Local $sFilter = GUICtrlRead($g_hCombo_VolumeFilter)
 	Local $sFileVolume = @ScriptDir & "\volume_history.ini"
+	Local $sFileProfit = @ScriptDir & "\profit_history.ini"
 	Local $fDisplayVol = 0
+	Local $fDisplayProf = 0
 
 	Local $sToday = _GetGamingDate()
 	Local $aD = StringSplit($sToday, "-")
@@ -4221,29 +4161,61 @@ Func _RefreshVolumeDisplay()
 		GUICtrlSetState($g_hDate_VolumeFilter, $GUI_SHOW)
 		Local $sPickedDate = GUICtrlRead($g_hDate_VolumeFilter)
 		$fDisplayVol = Number(IniRead($sFileVolume, "Daily", $sPickedDate, "0"))
+		$fDisplayProf = Number(IniRead($sFileProfit, "Daily", $sPickedDate, "0"))
 	Else
 		GUICtrlSetState($g_hDate_VolumeFilter, $GUI_HIDE)
 		Switch $sFilter
 			Case "Hôm Nay"
 				$fDisplayVol = Number(IniRead($sFileVolume, "Daily", $sToday, "0"))
+				$fDisplayProf = Number(IniRead($sFileProfit, "Daily", $sToday, "0"))
+			Case "Hôm Qua"
+				Local $sYesterday = StringReplace(_DateAdd('D', -1, _NowCalcDate()), "/", "-")
+				$fDisplayVol = Number(IniRead($sFileVolume, "Daily", $sYesterday, "0"))
+				$fDisplayProf = Number(IniRead($sFileProfit, "Daily", $sYesterday, "0"))
+			Case "3 Ngày Qua"
+				; Vòng lặp lùi 0, 1, 2 ngày để cộng dồn
+				For $i = 0 To 2
+					Local $sDay = StringReplace(_DateAdd('D', -$i, _NowCalcDate()), "/", "-")
+					$fDisplayVol += Number(IniRead($sFileVolume, "Daily", $sDay, "0"))
+					$fDisplayProf += Number(IniRead($sFileProfit, "Daily", $sDay, "0"))
+				Next
 			Case "Tuần Này"
 				$fDisplayVol = Number(IniRead($sFileVolume, "Weekly", $sThisWeek, "0"))
+				$fDisplayProf = Number(IniRead($sFileProfit, "Weekly", $sThisWeek, "0"))
 			Case "Tháng Này"
 				$fDisplayVol = Number(IniRead($sFileVolume, "Monthly", $sThisMonth, "0"))
-			Case "Năm Nay"
+				$fDisplayProf = Number(IniRead($sFileProfit, "Monthly", $sThisMonth, "0"))
+			Case "3 Tháng"
+				; Lùi 0, 1, 2 tháng để cộng dồn
+				For $i = 0 To 2
+					Local $sMonth = StringLeft(StringReplace(_DateAdd('M', -$i, _NowCalcDate()), "/", "-"), 7)
+					$fDisplayVol += Number(IniRead($sFileVolume, "Monthly", $sMonth, "0"))
+					$fDisplayProf += Number(IniRead($sFileProfit, "Monthly", $sMonth, "0"))
+				Next
+			Case "6 Tháng"
+				For $i = 0 To 5
+					Local $sMonth = StringLeft(StringReplace(_DateAdd('M', -$i, _NowCalcDate()), "/", "-"), 7)
+					$fDisplayVol += Number(IniRead($sFileVolume, "Monthly", $sMonth, "0"))
+					$fDisplayProf += Number(IniRead($sFileProfit, "Monthly", $sMonth, "0"))
+				Next
+			Case "1 Năm"
 				$fDisplayVol = Number(IniRead($sFileVolume, "Yearly", $sThisYear, "0"))
+				$fDisplayProf = Number(IniRead($sFileProfit, "Yearly", $sThisYear, "0"))
 			Case "TỔNG VĨNH VIỄN"
 				$fDisplayVol = Number(IniRead($sFileVolume, "Total", "Lifetime", "0"))
+				$fDisplayProf = Number(IniRead($sFileProfit, "Total", "Lifetime", "0"))
 		EndSwitch
 	EndIf
 
-	; ========================================================
-	; TỰ ĐỘNG TÍNH VÀ HIỂN THỊ PHÍ HOA HỒNG LÊN GIAO DIỆN
-	; ========================================================
-	Local $fFee = Round($fDisplayVol * 0.005)
-	GUICtrlSetData($g_hLabel_TotalVolume, "Tổng: " & _FormatNumber($fDisplayVol) & " đ")
-EndFunc   ;==>_RefreshVolumeDisplay
+	; Cập nhật hiển thị (Hoa hồng 0.8%)
+	Local $fFee = Round($fDisplayVol * 0.008)
+	GUICtrlSetData($g_hLabel_TotalVolume, "Volume: " & _FormatNumber($fDisplayVol) & " đ | Hoa Hồng: " & _FormatNumber($fFee) & " đ")
 
+	Local $fNetTotal = $fDisplayProf + $fFee
+	Local $sColorNet = ($fNetTotal >= 0) ? 0x006400 : 0xFF0000
+	GUICtrlSetData($g_hLabel_NetDay, "TỔNG LÃI " & StringUpper($sFilter) & ": " & _FormatNumber($fNetTotal) & " đ")
+	GUICtrlSetColor($g_hLabel_NetDay, $sColorNet)
+EndFunc
 Func _SyncLiveDashboard($fLiveBalance, $fLiveProfit, $fLiveVolume)
 	GUICtrlSetData($g_hLabel_CurrentBalance, _FormatNumber($fLiveBalance) & " đ")
 	GUICtrlSetColor($g_hLabel_CurrentBalance, 0x0000FF)
@@ -4251,21 +4223,17 @@ Func _SyncLiveDashboard($fLiveBalance, $fLiveProfit, $fLiveVolume)
 	If $fLiveProfit >= 0 Then
 		GUICtrlSetData($g_hLabel_Profit, "+" & _FormatNumber($fLiveProfit) & " đ")
 		GUICtrlSetColor($g_hLabel_Profit, 0x006400)
-		GUICtrlSetData($g_hLabel_TotalProfitStats, "+" & _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0x006400)
 	Else
 		GUICtrlSetData($g_hLabel_Profit, _FormatNumber($fLiveProfit) & " đ")
 		GUICtrlSetColor($g_hLabel_Profit, 0xFF0000)
-		GUICtrlSetData($g_hLabel_TotalProfitStats, _FormatNumber($fLiveProfit) & " đ")
-		GUICtrlSetColor($g_hLabel_TotalProfitStats, 0xFF0000)
 	EndIf
 
+; ========================================================
+	; ĐỒNG BỘ VOLUME LÊN GIAO DIỆN (0.8%)
 	; ========================================================
-	; BƠM SỐ VOLUME KÈM THEO PHÍ HOA HỒNG 0.5% (TỨC THÌ)
-	; ========================================================
-	Local $fLiveFee = Round($fLiveVolume * 0.005)
-	GUICtrlSetData($g_hLabel_TotalVolume, _FormatNumber($fLiveVolume) & " đ (Phí: " & _FormatNumber($fLiveFee) & " đ)")
-	GUICtrlSetColor($g_hLabel_TotalVolume, 0x8A2BE2)
+	Local $fLiveFee = Round($fLiveVolume * 0.008)
+	GUICtrlSetData($g_hLabel_TotalVolume, "Volume: " & _FormatNumber($fLiveVolume) & " đ | Hoa Hồng: " & _FormatNumber($fLiveFee) & " đ")
+	GUICtrlSetColor($g_hLabel_TotalVolume, 0x8A2BE2) ; Giữ màu tím VIP
 EndFunc   ;==>_SyncLiveDashboard
 Func _UpdateDailyStats($fBetAmount, $fProfitChange)
 	$g_fUnsyncedVolume += $fBetAmount ; <--- Dòng gom tiền vừa cược
@@ -4378,59 +4346,66 @@ Func _GetDynamicPrice()
 EndFunc   ;==>_GetDynamicPrice
 
 Func _WaitManualAction_Pro($sMessage = "Vui lòng thao tác trên web, sau đó bấm TIẾP TỤC")
-	; Xóa thông báo cũ nếu đang mở (chống mở 2 bảng trùng nhau)
 	Local Static $hWaitGUI = 0
 	If $hWaitGUI <> 0 Then GUIDelete($hWaitGUI)
 
-	; Tạo GUI không viền ($WS_POPUP), luôn nổi trên cùng ($WS_EX_TOPMOST), và không hiện dưới taskbar ($WS_EX_TOOLWINDOW)
-	$hWaitGUI = GUICreate("Manual Action", 400, 130, -1, -1, $WS_POPUP, BitOR($WS_EX_TOPMOST, $WS_EX_TOOLWINDOW))
-	GUISetBkColor(0x111111, $hWaitGUI) ; Màu nền đen nhám huyền bí
+	; Nới nhẹ chiều cao tổng lên 140 để đủ chỗ chứa 3 dòng text thoải mái
+	$hWaitGUI = GUICreate("System Pause", 350, 140, -1, -1, $WS_POPUP, BitOR($WS_EX_TOPMOST, $WS_EX_TOOLWINDOW))
+	GUISetBkColor(0x282C34, $hWaitGUI)
 
-	; Viền màu trên/dưới trang trí (Neon Xanh lá)
-	GUICtrlCreateLabel("", 0, 0, 400, 2)
-	GUICtrlSetBkColor(-1, 0x00FF00)
-	GUICtrlCreateLabel("", 0, 128, 400, 2)
-	GUICtrlSetBkColor(-1, 0x00FF00)
+	; Đường viền trên cùng
+	GUICtrlCreateLabel("", 0, 0, 350, 3)
+	GUICtrlSetBkColor(-1, 0x00A2ED)
 
-	; Tiêu đề cảnh báo chớp tắt hoặc màu nổi
-	Local $hTitle = GUICtrlCreateLabel("⏳ HỆ THỐNG TẠM DỪNG CHỜ THAO TÁC", 10, 15, 380, 25, $SS_CENTER)
-	GUICtrlSetFont(-1, 12, 800, 0, "Segoe UI")
-	GUICtrlSetColor(-1, 0xFFD700) ; Màu vàng Gold cực sang
+	; Tiêu đề
+	Local $hTitle = GUICtrlCreateLabel("⏳ HỆ THỐNG TẠM DỪNG CẦN THAO TÁC", 10, 12, 300, 20)
+	GUICtrlSetFont(-1, 10, 700, 0, "Segoe UI")
+	GUICtrlSetColor(-1, 0xE5C07B)
 
-	; Nội dung thông báo
-	Local $hText = GUICtrlCreateLabel($sMessage, 10, 50, 380, 35, $SS_CENTER)
-	GUICtrlSetFont(-1, 10, 400, 0, "Segoe UI")
-	GUICtrlSetColor(-1, 0x00FF00) ; Xanh Matrix
+	; Nút X
+	Local $hBtnClose = GUICtrlCreateButton("X", 315, 8, 25, 25)
+	GUICtrlSetFont(-1, 10, 800, 0, "Segoe UI")
+	GUICtrlSetBkColor(-1, 0xE06C75)
+	GUICtrlSetColor(-1, 0xFFFFFF)
+	GUICtrlSetCursor(-1, 0)
 
-	; Bức tường vô hình dùng để KÉO THẢ CỬA SỔ
-	; Label này đè lên vùng chữ, sử dụng $GUI_WS_EX_PARENTDRAG cho phép nhấp giữ để di chuyển bảng
-	Local $hDragArea = GUICtrlCreateLabel("", 0, 0, 400, 90, -1, $GUI_WS_EX_PARENTDRAG)
+	; Nội dung thông báo - Nới chiều cao lên 55 để hiển thị hết chữ
+	Local $hText = GUICtrlCreateLabel($sMessage, 15, 40, 320, 55, $SS_CENTER)
+	GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
+	GUICtrlSetColor(-1, 0xABB2BF)
+
+	; Vùng kéo thả cửa sổ
+	Local $hDragArea = GUICtrlCreateLabel("", 0, 0, 300, 90, -1, $GUI_WS_EX_PARENTDRAG)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 
-	; Nút xác nhận tiếp tục
-	Local $hBtnDone = GUICtrlCreateButton("✓ ĐÃ XONG - TIẾP TỤC", 100, 90, 200, 30)
-	GUICtrlSetFont(-1, 10, 800, 0, "Segoe UI")
-	GUICtrlSetBkColor(-1, 0x004400) ; Nền xanh lá đậm
-	GUICtrlSetColor(-1, 0xFFFFFF)   ; Chữ trắng
-	GUICtrlSetCursor(-1, 0)         ; Trỏ chuột hình bàn tay
+	; Nút xác nhận - Đẩy lùi xuống dưới một chút nhường chỗ cho text
+	Local $hBtnDone = GUICtrlCreateButton("✓ ĐÃ XONG - TIẾP TỤC CHẠY", 75, 100, 200, 28)
+	GUICtrlSetFont(-1, 9, 800, 0, "Segoe UI")
+	GUICtrlSetBkColor(-1, 0x98C379)
+	GUICtrlSetColor(-1, 0x000000)
+	GUICtrlSetCursor(-1, 0)
 
-	; Hiển thị bảng và làm trong suốt 10% (Alpha 230/255) để có thể thấy mờ mờ nội dung phía sau
-	WinSetTrans($hWaitGUI, "", 230)
+	WinSetTrans($hWaitGUI, "", 240)
 	GUISetState(@SW_SHOW, $hWaitGUI)
 
-	; Vòng lặp khóa tool, chờ sếp bấm nút "ĐÃ XONG"
+	Local $bContinue = False
+
 	While 1
 		Switch GUIGetMsg()
 			Case $hBtnDone
+				$bContinue = True
+				ExitLoop
+			Case $hBtnClose
+				$bContinue = False
 				ExitLoop
 		EndSwitch
 		Sleep(10)
 	WEnd
 
-	; Dọn dẹp bảng thông báo sau khi bấm
 	GUIDelete($hWaitGUI)
 	$hWaitGUI = 0
-EndFunc   ;==>_WaitManualAction_Pro
+	Return $bContinue
+EndFunc
 Func _FormatMoneyVN($sInput)
 	; Xóa sạch mọi thứ không phải là số (bao gồm cả dấu chấm cũ)
 	$sInput = StringRegExpReplace($sInput, "\D", "")
@@ -4450,7 +4425,9 @@ Func _SyncVolumeToServer()
 		$g_fUnsyncedVolume = 0
 
 		Local $sUrl = $g_sAppsScriptBaseURL & "?action=add_volume&hwid=" & $g_sHWID & "&vol=" & $fVolToSend & "&nocache=" & TimerInit()
-		InetRead($sUrl, 3) ; Bắn ngầm, không cần quan tâm response nữa
+
+		; THÊM DẤU CHẤM PHẨY VÀO TRƯỚC DÒNG DƯỚI ĐÂY ĐỂ TẮT ĐẨY VOLUME
+		; InetRead($sUrl, 3)
 	EndIf
 EndFunc
 Func _UpdateVipButtonState()
@@ -4517,51 +4494,6 @@ Func _UpdateVipButtonState()
 	EndIf
 EndFunc   ;==>_UpdateVipButtonState
 
-; ====================================================================
-; KIỂM TRA BẢO MẬT TRƯỚC KHI CHẠY TOOL
-; ====================================================================
-Func _DecideNextAction()
-	Local $aStop[3] = ["OBSERVE", "", 0]
-
-	; Xử lý nghỉ theo PHÚT
-	If $g_iTargetPauseEndTime <> 0 Then
-		Local $iElapsed = TimerDiff($g_iTargetPauseEndTime)
-		If $iElapsed < $g_iTargetPauseDuration Then
-			Local $iMinsLeft = Ceiling(($g_iTargetPauseDuration - $iElapsed) / 60000)
-			_UpdateStatus("⏳ Đang nghỉ giải lao... Còn " & $iMinsLeft & " phút.")
-			Return $aStop ; Ép trả về OBSERVE (Không đánh)
-		Else
-			$g_iTargetPauseEndTime = 0
-			_UpdateStatus("✅ Đã hết thời gian nghỉ giải lao! Bắt đầu dò cầu chiến tiếp.")
-		EndIf
-	EndIf
-
-	; Xử lý nghỉ theo VÁN
-	If $g_iTargetPauseHands > 0 Then Return $aStop
-
-	; CHỈ QUÉT CHỐT LỜI/CẮT LỖ KHI ĐÃ ĐI XONG CHUỖI (VỀ LẠI LỆNH 0)
-	If $g_iCapitalLevel == 0 Then
-		If _CheckProfitLossTargets() Then Return $aStop
-	EndIf
-
-	Local $iTotalHands = UBound($g_aDisplayHistory)
-
-	; LUỒNG DÀNH CHO BẢN THƯỜNG (Du Kích, Nối Đuôi, Custom...)
-	If GUICtrlRead($g_hCheckbox_DuKich) = $GUI_CHECKED Then
-		If $g_iWaitTimeEnd_DuKich <> 0 Then
-			Local $iElapsed = TimerDiff($g_iWaitTimeEnd_DuKich)
-			If $iElapsed < $g_iWaitDuration_DuKich Then Return $aStop
-			$g_iWaitTimeEnd_DuKich = 0
-		EndIf
-		If $g_iSkipSignalsCount_DuKich > 0 Then Return $aStop
-	EndIf
-
-	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
-	; Lấy quyết định từ Bảng Cầu Chính (Custom Rules)
-	Local $aResult = _Logic_Custom($iTotalHands, $aQLV[1], False)
-
-	Return $aResult
-EndFunc   ;==>_DecideNextAction
 Func _GetRealGameWindow($sClass)
 	; 1. Bắt theo tọa độ Nút Banker (Ưu tiên 1)
 	Local $iBankerX = Number(GUICtrlRead($g_hInput_BankerX))
@@ -4580,23 +4512,20 @@ Func _GetRealGameWindow($sClass)
 		EndIf
 	EndIf
 
-	; 2. Bắt theo danh sách cửa sổ (Lọc kỹ hơn, chống nhầm qua tab khác)
+	; 2. Bắt theo danh sách cửa sổ (Lấy cửa sổ có kích thước hiển thị lớn nhất)
 	Local $aList = WinList("[CLASS:" & $sClass & "]")
 	Local $hWndReal = 0
-
-	Local $iResultColor = Number(GUICtrlRead($g_hInput_BankerColor)) ; Lấy màu chuẩn Banker làm mốc
+	Local $iMaxArea = 0
 
 	For $i = 1 To $aList[0][0]
 		If $aList[$i][0] <> "" And BitAND(WinGetState($aList[$i][1]), 2) Then
 			Local $aPos = WinGetPos($aList[$i][1])
 			; Cửa sổ phải đủ to (trên 300px) để là trình duyệt
 			If IsArray($aPos) And $aPos[2] > 300 And $aPos[3] > 300 Then
-				; Nếu chưa tìm được cửa sổ nào, cứ lấy tạm cửa sổ to nhất
-				If $hWndReal = 0 Then $hWndReal = $aList[$i][1]
-
-				; NHƯNG nếu trong cửa sổ này quét thấy mã màu của game, chốt luôn cửa sổ này!
-				If IsArray(PixelSearch($aPos[0], $aPos[1], $aPos[0] + $aPos[2], $aPos[1] + $aPos[3], $iResultColor, 10)) Then
-					Return $aList[$i][1]
+				Local $iArea = $aPos[2] * $aPos[3]
+				If $iArea > $iMaxArea Then
+					$iMaxArea = $iArea
+					$hWndReal = $aList[$i][1]
 				EndIf
 			EndIf
 		EndIf
@@ -4640,19 +4569,14 @@ Func _CreateGroup_FormulaLibrary()
 	GUICtrlSetColor(-1, 0x555555)
 
 	GUICtrlCreateGroup("", -99, -99, 1, 1)
-EndFunc
-; =====================================================================
-; HỆ THỐNG QUẢN LÝ THƯ VIỆN CÔNG THỨC
-; =====================================================================
+EndFunc   ;==>_CreateGroup_FormulaLibrary
 Func _EnsureDefaultFormulasExist()
 	Local $aData = IniReadSection($g_sIniPath, "UserFormulas")
 	If @error Or $aData[0][0] = 0 Then
-		; Đã đổi sang tiếng Việt KHÔNG DẤU để chống lỗi hiển thị file INI
 		IniWrite($g_sIniPath, "UserFormulas", "Danh Theo Duoi (Bam Cau)", "B-B|NL|P-P")
-		IniWrite($g_sIniPath, "UserFormulas", "Danh Chan (Be Cau 3)", "BBB-P|NL|PPP-B")
 		IniWrite($g_sIniPath, "UserFormulas", "Danh Ping Pong", "B-P|NL|P-B")
 	EndIf
-EndFunc
+EndFunc   ;==>_EnsureDefaultFormulasExist
 Func _PopulateFormulaLibrary()
 	_EnsureDefaultFormulasExist()
 	Local $aData = IniReadSection($g_sIniPath, "UserFormulas")
@@ -4665,7 +4589,7 @@ Func _PopulateFormulaLibrary()
 		Next
 	EndIf
 	GUICtrlSetData($g_hList_FormulaLibrary, $sList)
-EndFunc
+EndFunc   ;==>_PopulateFormulaLibrary
 
 Func _LoadSelectedFormula()
 	Local $sSelected = GUICtrlRead($g_hList_FormulaLibrary)
@@ -4687,7 +4611,7 @@ Func _LoadSelectedFormula()
 	Else
 		MsgBox(48, "Lỗi", "Công thức này đang trống hoặc bị lỗi!")
 	EndIf
-EndFunc
+EndFunc   ;==>_LoadSelectedFormula
 Func _SaveCurrentFormula()
 	Local $sCurrent = StringStripWS(GUICtrlRead($g_hInput_CustomRules), 3)
 	If $sCurrent = "" Then
@@ -4720,107 +4644,13 @@ Func _DeleteSelectedFormula()
 		_PopulateFormulaLibrary()
 	EndIf
 EndFunc   ;==>_DeleteSelectedFormula
-; HÀM AI ĐỌC CHUỖI CẦU ĐỂ TÌM RA "3 ĐỎ" hay "XANH"
-Func _AnalyzeSmartRadar()
-	Local $sHist = ""
-	; Loại bỏ Hòa (T) vì Hòa không làm gãy cầu (Như video nói)
-	For $i = 0 To UBound($g_aDisplayHistory) - 1
-		If $g_aDisplayHistory[$i] <> "T" Then $sHist &= $g_aDisplayHistory[$i]
-	Next
 
-	Local $iLen = StringLen($sHist)
-	If $iLen < 4 Then Return "WAIT" ; Cầu mới mở chưa đủ dữ liệu phân tích
-
-	; Lấy 4 tay gần nhất để đối chiếu xu hướng
-	Local $sLast4 = StringRight($sHist, 4)
-	Local $sLast2 = StringRight($sHist, 2)
-
-	; 1. NHẬN DIỆN "3 ĐỎ" (Cầu Đều / Bệt / Ping Pong 1-1 / 2-2)
-	; Nếu 4 tay cuối là BBBB, PPPP, BPBP, PBPB, BBPP, PPBB -> Cực kỳ ổn định (ĐỎ)
-	If $sLast4 == "BBBB" Or $sLast4 == "PPPP" Or $sLast4 == "BPBP" Or $sLast4 == "PBPB" Or $sLast4 == "BBPP" Or $sLast4 == "PPBB" Then
-		Return "3D" ; 3 Đỏ - Bệt đẹp
-	EndIf
-
-	; 2. NHẬN DIỆN "XANH" (Cầu loạn nhịp / Đảo chiều)
-	; Bắt đầu có dấu hiệu bẻ gãy xu hướng
-	Return "XANH"
-EndFunc
-
-Func _ScanEvoLongLongBoard_Full()
-	Local $hWnd = $g_hTargetGameWin
-	If $hWnd = 0 Or Not WinExists($hWnd) Then Return ""
-
-	Local $sHistory = ""
-	Local $iStartX = Number(GUICtrlRead($g_hInput_ResultX1))
-	Local $iStartY = Number(GUICtrlRead($g_hInput_ResultY1))
-	Local $iX2 = Number(GUICtrlRead($g_hInput_ResultX2))
-	Local $iY2 = Number(GUICtrlRead($g_hInput_ResultY2))
-
-	Local $fOffsetX = $iX2 - $iStartX
-	Local $fOffsetY = $iY2 - $iStartY
-
-	; --- SMART OFFSET CHỐNG LỆCH ---
-	; Nếu sếp lấy tọa độ ở Hạt (Hàng 6, Cột 6), khoảng cách sẽ > 60px. Tool sẽ tự chia 5 để ra độ rộng chuẩn 1 ô.
-	If $fOffsetX > 60 Then $fOffsetX = $fOffsetX / 5
-	If $fOffsetY > 60 Then $fOffsetY = $fOffsetY / 5
-	; --------------------------------
-
-	Local $iColRed = Number(GUICtrlRead($g_hInput_BankerColor))
-	Local $iColYellow = Number(GUICtrlRead($g_hInput_PlayerColor))
-	Local $iShade = Number(GUICtrlRead($g_hInput_Shade_Result))
-
-	If $iShade < 40 Then $iShade = 10 ; Ép dung sai cao lên để chống lóa
-
-	If $fOffsetX <= 0 Or $fOffsetY <= 0 Then Return ""
-
-	; Chỉnh lại 0.20 theo ý sếp để khoảng cách cân đối nhất
-	Local $iSampleDist = Round($fOffsetX * 0.20)
-	If $iSampleDist < 3 Then $iSampleDist = 3
-
-	Local $iEmptyCount = 0 ; Biến đếm số ô trống
-
-	For $c = 0 To 18
-		Local $iMaxRow = 5
-		If $c == 18 Then $iMaxRow = 1
-
-		For $r = 0 To $iMaxRow
-			Local $iCX = $iStartX + ($c * $fOffsetX)
-			Local $iCY = $iStartY + ($r * $fOffsetY)
-
-			Local $iColorTL = PixelGetColor($iCX - $iSampleDist, $iCY - $iSampleDist, $hWnd)
-			Local $iColorBR = PixelGetColor($iCX + $iSampleDist, $iCY + $iSampleDist, $hWnd)
-
-			Local $bTL_Red = _CheckColorRange($iColorTL, $iColRed, $iShade)
-			Local $bBR_Red = _CheckColorRange($iColorBR, $iColRed, $iShade)
-			Local $bTL_Yel = _CheckColorRange($iColorTL, $iColYellow, $iShade)
-			Local $bBR_Yel = _CheckColorRange($iColorBR, $iColYellow, $iShade)
-
-			If $bTL_Red And $bBR_Red Then
-				$sHistory &= "D"
-				$iEmptyCount = 0 ; Reset đếm nếu thấy hạt
-			ElseIf $bTL_Yel And $bBR_Yel Then
-				$sHistory &= "V"
-				$iEmptyCount = 0
-			ElseIf ($bTL_Red And $bBR_Yel) Or ($bTL_Yel And $bBR_Red) Then
-				$sHistory &= "T"
-				$iEmptyCount = 0
-			Else
-				; Nếu không thấy màu gì, cộng biến đếm lên 1
-				$iEmptyCount += 1
-
-				; CHỐT CHẶN: Chỉ khi nào quét trúng 3 ô đen liên tiếp mới chắc chắn là hết bảng cầu
-				If $iEmptyCount >= 3 Then Return $sHistory
-			EndIf
-		Next
-	Next
-	Return $sHistory
-EndFunc
 Func _CheckColorRange($iColor, $iTarget, $iShade)
 	Local $r1 = BitAND(BitShift($iColor, 16), 0xFF), $g1 = BitAND(BitShift($iColor, 8), 0xFF), $b1 = BitAND($iColor, 0xFF)
 	Local $r2 = BitAND(BitShift($iTarget, 16), 0xFF), $g2 = BitAND(BitShift($iTarget, 8), 0xFF), $b2 = BitAND($iTarget, 0xFF)
 	If Abs($r1 - $r2) <= $iShade And Abs($g1 - $g2) <= $iShade And Abs($b1 - $b2) <= $iShade Then Return True
 	Return False
-EndFunc
+EndFunc   ;==>_CheckColorRange
 ; =====================================================================
 ; HÀM DEBUG TỌA ĐỘ MA TRẬN LONG LONG (BẤM F4 ĐỂ VẼ DẤU THẬP ĐỎ)
 ; =====================================================================
@@ -4838,11 +4668,10 @@ Func _DebugGrid()
 	Local $fOffsetX = $iX2 - $iStartX
 	Local $fOffsetY = $iY2 - $iStartY
 
-	; --- SMART OFFSET CHỐNG LỆCH ---
-	If $fOffsetX > 60 Then $fOffsetX = $fOffsetX / 5
+	; --- TÍNH TOÁN BƯỚC NHẢY CHUẨN XÁC TUYỆT ĐỐI THEO FULL BẢNG ---
+	If $fOffsetX > 60 Then $fOffsetX = $fOffsetX / 17
 	If $fOffsetY > 60 Then $fOffsetY = $fOffsetY / 5
-	; --------------------------------
-
+	; --------------------------------------------------------------
 	If $fOffsetX < 5 Or $fOffsetY < 5 Then
 		MsgBox(48, "Lỗi Tọa Độ", "Khoảng cách lấy bị sai!")
 		Return
@@ -4868,11 +4697,1519 @@ Func _DebugGrid()
 	Next
 
 	_WinAPI_ReleaseDC(0, $hDC)
-EndFunc
+EndFunc   ;==>_DebugGrid
 ; Hàm hỗ trợ vẽ dấu thập (dài 5 pixel)
-Func _DrawRedCross($hDC, $X, $Y)
+Func _DrawRedCross($hDC, $x, $y)
 	For $i = -2 To 2
-		_WinAPI_SetPixel($hDC, $X + $i, $Y, 0xFF0000) ; Đã sửa thành Đỏ chuẩn
-		_WinAPI_SetPixel($hDC, $X, $Y + $i, 0xFF0000)
+		_WinAPI_SetPixel($hDC, $x + $i, $y, 0xFF0000) ; Đã sửa thành Đỏ chuẩn
+		_WinAPI_SetPixel($hDC, $x, $y + $i, 0xFF0000)
 	Next
+EndFunc   ;==>_DrawRedCross
+Func _AI_AnalyzeBestStrategy($sHistory)
+	; Nếu lịch sử quá ngắn, chờ thêm
+	If StringLen($sHistory) < 10 Then Return "WAIT"
+
+	Local $iScore_BamCau = 0  ; Bám bệt (B đánh B, P đánh P)
+	Local $iScore_BeCau = 0   ; Đánh Ping Pong (B đánh P, P đánh B)
+
+	; Chạy thử nghiệm trên chuỗi lịch sử hiện tại
+	For $i = 2 To StringLen($sHistory)
+		Local $sPrev = StringMid($sHistory, $i - 1, 1)
+		Local $sCurr = StringMid($sHistory, $i, 1)
+
+		If $sPrev == $sCurr Then
+			$iScore_BamCau += 1
+		Else
+			$iScore_BeCau += 1
+		EndIf
+	Next
+
+	; AI Quyết định
+	If $iScore_BamCau > $iScore_BeCau Then
+		_UpdateStatus("🤖 AI Phân tích: Bàn này đang BỆT nhiều (" & $iScore_BamCau & " tay). Chốt chiến thuật: BÁM CẦU.")
+		Return "BAM_CAU"
+	Else
+		_UpdateStatus("🤖 AI Phân tích: Bàn này đang CHUYỀN nhiều (" & $iScore_BeCau & " tay). Chốt chiến thuật: PING PONG.")
+		Return "PING_PONG"
+	EndIf
+EndFunc   ;==>_AI_AnalyzeBestStrategy
+; ==================================================================================================
+; HÀM QUÉT BẢNG KHỐI VẠN NĂNG (TÍCH HỢP QUÉT CHỮ THẬP NÉ CHẤM ĐÔI)
+; ==================================================================================================
+Func _ScanUniversalBeadPlate()
+	Local $hWnd = $g_hTargetGameWin
+	If $hWnd = 0 Or Not WinExists($hWnd) Then Return ""
+
+	Local $sHistory = ""
+	Local $iStartX = Number(GUICtrlRead($g_hInput_ResultX1))
+	Local $iStartY = Number(GUICtrlRead($g_hInput_ResultY1))
+	Local $iX2 = Number(GUICtrlRead($g_hInput_ResultX2))
+	Local $iY2 = Number(GUICtrlRead($g_hInput_ResultY2))
+
+	If $iStartX = 0 Or $iX2 = 0 Then Return ""
+
+	; Tool tự tính khoảng cách giữa các ô dựa trên toàn bộ khung bảng (VD: 18 cột, 6 hàng)
+	Local $fOffsetX = ($iX2 - $iStartX) / ($g_iGridCols_Max - 1)
+	Local $fOffsetY = ($iY2 - $iStartY) / ($g_iGridRows_Max - 1)
+
+	Local $iColRed = Number(GUICtrlRead($g_hInput_BankerColor))
+	Local $iColBlue = Number(GUICtrlRead($g_hInput_PlayerColor))
+	Local $iColGreen = Number(GUICtrlRead($g_hInput_TieColor))
+	Local $iShade = Number(GUICtrlRead($g_hInput_Shade_Result))
+	If $iShade < 40 Then $iShade = 20
+
+	Local $iEmptyCount = 0
+
+	; Quét tuần tự từ Cột 1 -> Cột 18, từ Hàng 1 -> Hàng 6
+	For $c = 0 To ($g_iGridCols_Max - 1)
+		For $r = 0 To ($g_iGridRows_Max - 1)
+			; Tính tọa độ tâm của ô hiện tại
+			Local $iCX = $iStartX + ($c * $fOffsetX)
+			Local $iCY = $iStartY + ($r * $fOffsetY)
+
+			; =============================================================
+			; THUẬT TOÁN QUÉT CHỮ THẬP (Né góc chứa chấm Đôi / Né chữ Trắng)
+			; Khai báo mảng 5 điểm: Tâm, Trên, Dưới, Trái, Phải (Cách tâm 4 pixel)
+			; =============================================================
+			Local $aPoints[5][2] = [[$iCX, $iCY], [$iCX, $iCY - 4], [$iCX, $iCY + 4], [$iCX - 4, $iCY], [$iCX + 4, $iCY]]
+
+			Local $bFoundRed = False, $bFoundBlue = False, $bFoundGreen = False
+
+			; Chích 5 mũi kim để kiểm tra màu
+			For $p = 0 To 4
+				Local $iColor = PixelGetColor($aPoints[$p][0], $aPoints[$p][1], $hWnd)
+
+				If _CheckColorRange($iColor, $iColRed, $iShade) Then
+					$bFoundRed = True
+					ExitLoop ; Thấy màu là thoát vòng lặp chích kim ngay để tối ưu tốc độ
+				ElseIf _CheckColorRange($iColor, $iColBlue, $iShade) Then
+					$bFoundBlue = True
+					ExitLoop
+				ElseIf _CheckColorRange($iColor, $iColGreen, $iShade) Then
+					$bFoundGreen = True
+					ExitLoop
+				EndIf
+			Next
+
+			; =============================================================
+			; GHI NHẬN KẾT QUẢ VÀ XỬ LÝ Ô TRỐNG
+			; =============================================================
+			If $bFoundRed Then
+				$sHistory &= "B"
+				$iEmptyCount = 0 ; Reset bộ đếm nếu thấy có kết quả
+			ElseIf $bFoundBlue Then
+				$sHistory &= "P"
+				$iEmptyCount = 0
+			ElseIf $bFoundGreen Then
+				$sHistory &= "T"
+				$iEmptyCount = 0
+			Else
+				; Nếu chích 5 mũi kim đều không ra màu B/P/T -> Ô trống
+				$iEmptyCount += 1
+
+				; Chạm 3 ô trống liên tiếp -> Ván bài đã dừng ở đây -> Trả về kết quả ngay
+				If $iEmptyCount >= 3 Then Return $sHistory
+			EndIf
+		Next
+	Next
+	Return $sHistory
+EndFunc   ;==>_ScanUniversalBeadPlate
+; =========================================================================
+; HÀM TRỢ GIÚP 1: BÓC TÁCH CỤM CHÍNH XÁC 100% (NGĂN BẮT NHẦM BỆT)
+; Biến đổi lịch sử thành chuỗi khối. Ví dụ: PPBBBP -> "P2-B3-P1"
+; Đảm bảo 2 Đỏ (B2) không bao giờ bị nhầm với Bệt 4 (B4).
+; =========================================================================
+Func _GetStrictStreakPattern($sStr, $iNumStreaks)
+	Local $sResult = ""
+	Local $iLen = StringLen($sStr)
+	If $iLen == 0 Then Return ""
+	Local $iStreaksFound = 0
+	Local $sCurrentChar = StringMid($sStr, $iLen, 1)
+	Local $iCount = 1
+
+	For $i = $iLen - 1 To 1 Step -1
+		Local $sChar = StringMid($sStr, $i, 1)
+		If $sChar == $sCurrentChar Then
+			$iCount += 1
+		Else
+			$sResult = $sCurrentChar & $iCount & "-" & $sResult
+			$iStreaksFound += 1
+			If $iStreaksFound == $iNumStreaks Then Return StringTrimRight($sResult, 1)
+			$sCurrentChar = $sChar
+			$iCount = 1
+		EndIf
+	Next
+	$sResult = $sCurrentChar & $iCount & "-" & $sResult
+	Return StringTrimRight($sResult, 1)
+EndFunc   ;==>_GetStrictStreakPattern
+
+; =========================================================================
+; HÀM TRỢ GIÚP 2: CẤP ID RIÊNG BIỆT CHO TỪNG CỤM (ĐỂ GẤP THẾP ĐỘC LẬP)
+; =========================================================================
+Func _GetAIPatternRuleIndex($sPattern)
+	Static $aAIPatternList[250]
+	Static $iAIPatternCount = 0
+	For $i = 0 To $iAIPatternCount - 1
+		If $aAIPatternList[$i] == $sPattern Then Return 50 + $i ; Cấp ID từ 50 trở đi
+	Next
+	If $iAIPatternCount < 250 Then
+		$aAIPatternList[$iAIPatternCount] = $sPattern
+		$iAIPatternCount += 1
+		Return 50 + ($iAIPatternCount - 1)
+	EndIf
+	Return 50
+EndFunc   ;==>_GetAIPatternRuleIndex
+
+; =========================================================================
+; LÕI QUYẾT ĐỊNH XUỐNG TIỀN (GẤP THẾP ĐỢI CỤM)
+; =========================================================================
+Func _DecideNextAction()
+	Local $aStop[3] = ["OBSERVE", "", 0]
+
+	If $g_iTargetPauseEndTime <> 0 Then
+		If TimerDiff($g_iTargetPauseEndTime) < $g_iTargetPauseDuration Then Return $aStop
+		$g_iTargetPauseEndTime = 0
+	EndIf
+	If $g_iTargetPauseHands > 0 Then Return $aStop
+
+	If $g_iCapitalLevel == 0 Then
+		If _CheckProfitLossTargets() Then Return $aStop
+	EndIf
+
+	; =========================================================================
+	; [CHẾ ĐỘ 1]: MẬT MÃ GHI NHỚ 0-4 (ƯU TIÊN TỐI CAO - NGẮT MỌI TÍNH NĂNG KHÁC)
+	; =========================================================================
+	If GUICtrlRead($g_hCheckbox_MemoryCode) == $GUI_CHECKED Then
+		If $g_sMemoryTargetBet == "B" Or $g_sMemoryTargetBet == "P" Then
+			Local $aQLV = _GetQLV_Params($g_iCapitalLevel) ; Lấy mức vốn hiện tại
+			Local $aResult[3] = ["BET", $g_sMemoryTargetBet, $aQLV[1]]
+			Return $aResult
+		EndIf
+
+		; Nếu không có tín hiệu bộ nhớ, đứng im quan sát, KHÔNG XUỐNG CODE DƯỚI
+		_UpdateStatus("🧠 Mật Mã Ghi Nhớ: Đang quan sát và chờ mốc điểm 0-4...")
+		Return $aStop
+	EndIf
+; =========================================================================
+	; [CHẾ ĐỘ XÓC ĐĨA VIP]: KIỂM TRA NẾU BẬT THÌ RẼ NHÁNH VÀO ĐÂY
+	; =========================================================================
+	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		; Lấy tọa độ nút bấm Limit từ giao diện đẩy vào biến chạy
+		$g_iLimitBtnX = Number(GUICtrlRead($g_hInput_LimitBtnX))
+		$g_iLimitBtnY = Number(GUICtrlRead($g_hInput_LimitBtnY))
+		$g_iLimit10_500X = Number(GUICtrlRead($g_hInput_Limit10_500X))
+		$g_iLimit10_500Y = Number(GUICtrlRead($g_hInput_Limit10_500Y))
+		$g_iLimit20_50KX = Number(GUICtrlRead($g_hInput_Limit20_50KX))
+		$g_iLimit20_50KY = Number(GUICtrlRead($g_hInput_Limit20_50KY))
+		$g_iLimitConfirmX = Number(GUICtrlRead($g_hInput_LimitConfirmX))
+		$g_iLimitConfirmY = Number(GUICtrlRead($g_hInput_LimitConfirmY))
+
+		; Chuyển lịch sử thành chuỗi văn bản và nạp vào hàm VIP
+		Local $sHistoryRaw = _ArrayToString($g_aDisplayHistory, "")
+		Return _Logic_XocDia_5Hang_VIP($sHistoryRaw)
+	EndIf
+
+	; =========================================================================
+	; [CHẾ ĐỘ 2]: CÁC LOGIC CŨ (AI, CÔNG THỨC CUSTOM) SẼ NẰM Ở DƯỚI NÀY
+	; =========================================================================
+	If GUICtrlRead($g_hCheckbox_AutoAI_BeCau) == $GUI_CHECKED Then
+		Local $aAIPredict = _AI_PredictNextBet_Advanced()
+		Local $sAIPredict = $aAIPredict[0]
+		Local $sPattern = $aAIPredict[1]
+
+		If $sAIPredict <> "" And $sPattern <> "" Then
+			$g_sLastAIPredict = $sAIPredict
+			$g_iAIWaitCount = 0
+
+			; 1. LẤY ID CỦA CỤM
+			$g_iLastActiveRuleIndex = _GetAIPatternRuleIndex($sPattern)
+
+			; 2. ĐỌC VỐN DỰA TRÊN ID (NẾU BẬT QLV RIÊNG BIỆT)
+			Local $iTargetLevel = $g_iCapitalLevel
+			Local $bSepQLV = (GUICtrlRead($g_hCheckbox_SeparateQLV) == $GUI_CHECKED)
+
+			If UBound($g_aRuleLevels) < 250 Then ReDim $g_aRuleLevels[250]
+
+			If $bSepQLV And $g_iLastActiveRuleIndex > -1 And $g_iLastActiveRuleIndex < UBound($g_aRuleLevels) Then
+				$iTargetLevel = $g_aRuleLevels[$g_iLastActiveRuleIndex]
+			EndIf
+
+			Local $aAI_QLV = _GetQLV_Params($iTargetLevel)
+			Local $aResult[3] = ["BET", $sAIPredict, $aAI_QLV[1]]
+
+			_UpdateStatus("🤖 [AI CHỐT] Cụm [" & $sPattern & "] -> Đánh " & $sAIPredict & " | Lệnh " & $iTargetLevel)
+			Return $aResult
+		EndIf
+
+		$g_iAIWaitCount += 1
+		If Mod($g_iAIWaitCount, 4) == 0 Then
+			_UpdateStatus("🛡️ Chống văng: Click an toàn vào bảng lịch sử...")
+			Local $iSafeX = Number(GUICtrlRead($g_hInput_ResultX1)) + 15
+			Local $iSafeY = Number(GUICtrlRead($g_hInput_ResultY1)) + 15
+			_SingleClick($g_hTargetGameWin, $iSafeX, $iSafeY, 0)
+		EndIf
+
+		_UpdateStatus("👁️ AI: " & $g_sLastAILogicInfo)
+		Return $aStop
+	EndIf
+
+	Local $aQLV = _GetQLV_Params($g_iCapitalLevel)
+	Local $iTotalHands = UBound($g_aDisplayHistory)
+	Return _Logic_Custom($iTotalHands, $aQLV[1], False)
+EndFunc   ;==>_DecideNextAction
+
+; =========================================================================
+; HÀM AI: TÌM CỤM CHÍNH XÁC VÀ TÍNH TOÁN XÁC SUẤT ĐỂ RA QUYẾT ĐỊNH
+; =========================================================================
+Func _AI_PredictNextBet_Advanced()
+	Local $aResult[2] = ["", ""]
+	Local $sHist = _ArrayToString($g_aDisplayHistory, "")
+	$sHist = StringReplace($sHist, "T", "")
+	Local $iLen = StringLen($sHist)
+
+	If $iLen < 6 Then
+		$g_sLastAILogicInfo = "Đang thu thập dữ liệu bàn (" & $iLen & "/6 tay)..."
+		Return $aResult
+	EndIf
+
+	Local $sTarget = ""
+	Local $sBestPattern = ""
+	Local $fConfidence = 0.0
+	Local $sLogicName = ""
+
+	; Tìm khuôn từ dài tới ngắn (Ưu tiên khuôn 3 khối, rồi 2 khối)
+	; Ví dụ 3 khối: P1-B2-P1 (1 Xanh - 2 Đỏ - 1 Xanh)
+	Local $iPatternLength = 3
+	If $iLen < 15 Then $iPatternLength = 2
+
+	While $iPatternLength >= 2
+		Local $sCurrentTailPattern = _GetStrictStreakPattern($sHist, $iPatternLength)
+		If $sCurrentTailPattern == "" Then ExitLoop
+
+		Local $iCountB = 0
+		Local $iCountP = 0
+
+		; Quét lịch sử để tìm các lần xuất hiện của cụm TÁCH BIỆT này
+		For $i = $iPatternLength To $iLen - 1
+			Local $sSubHist = StringLeft($sHist, $i)
+			Local $sPastPattern = _GetStrictStreakPattern($sSubHist, $iPatternLength)
+
+			If $sPastPattern == $sCurrentTailPattern Then
+				; Nếu khớp chính xác 100% cụm (không bị dính vào bệt), xem tay tiếp theo về gì
+				Local $sNextChar = StringMid($sHist, $i + 1, 1)
+				If $sNextChar == "B" Then $iCountB += 1
+				If $sNextChar == "P" Then $iCountP += 1
+			EndIf
+		Next
+
+		Local $iTotalFound = $iCountB + $iCountP
+		If $iTotalFound > 0 Then
+			If $iCountB > $iCountP Then
+				$sTarget = "B"
+				$fConfidence = Round(($iCountB / $iTotalFound) * 100, 1)
+			ElseIf $iCountP > $iCountB Then
+				$sTarget = "P"
+				$fConfidence = Round(($iCountP / $iTotalFound) * 100, 1)
+			EndIf
+
+			If $fConfidence > 50.0 Then
+				$sBestPattern = $sCurrentTailPattern
+				$sLogicName = "Bắt cụm tách biệt [" & $sCurrentTailPattern & "] (Lặp " & $iTotalFound & " lần)"
+				ExitLoop
+			EndIf
+		EndIf
+
+		$iPatternLength -= 1
+	WEnd
+
+	; Mốc tỉ lệ động (Đợi lâu thì mốc thấp cũng vào)
+	Local $fDynamicThreshold = 75.0
+	If $g_iAIWaitCount >= 4 Then $fDynamicThreshold = 55.0
+
+	If $sTarget <> "" And $fConfidence >= $fDynamicThreshold Then
+		$g_sLastAILogicInfo = $sLogicName & " | Tỉ lệ: " & $fConfidence & "%"
+		$aResult[0] = $sTarget
+		$aResult[1] = $sBestPattern
+		Return $aResult
+	EndIf
+
+	$g_sLastAILogicInfo = "Đang rình cụm rõ ràng hơn... (Tỉ lệ hiện tại: " & $fConfidence & "%)"
+	Return $aResult
+EndFunc   ;==>_AI_PredictNextBet_Advanced
+; Hàm hỗ trợ xác minh mảng màu đặc (Tuyệt đối toàn màn hình)
+Func _VerifySolidBlock_Absolute($iX, $iY, $iColor, $iShade)
+	Local $iMatch = 0
+	; PixelSearch luôn tìm thấy điểm ĐẦU TIÊN là mép TRÊN-TRÁI.
+	; Nên ta phải check các điểm lùi vào bên trong (hướng XUỐNG DƯỚI và SANG PHẢI 6px)
+	If _CheckColorRange(PixelGetColor($iX + 6, $iY), $iColor, $iShade) Then $iMatch += 1
+	If _CheckColorRange(PixelGetColor($iX, $iY + 6), $iColor, $iShade) Then $iMatch += 1
+	If _CheckColorRange(PixelGetColor($iX + 6, $iY + 6), $iColor, $iShade) Then $iMatch += 1
+
+	Return ($iMatch >= 2) ; Chỉ cần 2/3 điểm cùng màu là chốt khối đặc 100%
+EndFunc
+
+Func _IsBetTimeOpen()
+	Local $iX1 = $g_aBetTimeIndicatorArea[0]
+	Local $iY1 = $g_aBetTimeIndicatorArea[1]
+	Local $iX2 = $g_aBetTimeIndicatorArea[2]
+	Local $iY2 = $g_aBetTimeIndicatorArea[3]
+
+	Local $iLeft = $iX1, $iRight = $iX2
+	If $iX1 > $iX2 Then
+		$iLeft = $iX2
+		$iRight = $iX1
+	EndIf
+
+	Local $iTop = $iY1, $iBottom = $iY2
+	If $iY1 > $iY2 Then
+		$iTop = $iY2
+		$iBottom = $iY1
+	EndIf
+
+	Local $iTolerance = Number(GUICtrlRead($g_hInput_Shade_Timer))
+	If $iTolerance < 40 Then $iTolerance = 40
+
+	; Quét tuyệt đối không dùng $hWnd, Step 3 né nhiễu hạt
+	Local $aSearch = PixelSearch($iLeft, $iTop, $iRight, $iBottom, $g_iBetTimeIndicatorColor, $iTolerance, 3)
+	Return IsArray($aSearch)
+EndFunc
+
+Func _ScanPopupResult_PP()
+	Local $hWnd = $g_hTargetGameWin
+	If $hWnd = 0 Or Not WinExists($hWnd) Then Return ""
+
+	; Lấy tọa độ Khung Kết Quả (Đã được nội suy chuẩn xác cho bàn hiện tại)
+	Local $iX1 = $g_aResultArea[0]
+	Local $iY1 = $g_aResultArea[1]
+	Local $iX2 = $g_aResultArea[2]
+	Local $iY2 = $g_aResultArea[3]
+
+	Local $iColRed = Number(GUICtrlRead($g_hInput_BankerColor))
+	Local $iColBlue = Number(GUICtrlRead($g_hInput_PlayerColor))
+	Local $iColGreen = Number(GUICtrlRead($g_hInput_TieColor))
+	Local $iShade = Number(GUICtrlRead($g_hInput_Shade_Result))
+	If $iShade < 40 Then $iShade = 40 ; Ép dung sai tối thiểu 40 để bắt chớp nháy dễ hơn
+
+	Local $sFoundResult = ""
+
+	_UpdateStatus("⏳ Bàn " & ($g_iCurrentTableIndex + 1) & ": Đang rình Dealer lật bài...")
+
+	; =========================================================
+	; 1. RÌNH BÀI LẬT LÊN (Quét trong khung chữ nhật X1,Y1 - X2,Y2)
+	; =========================================================
+	While $g_bIsRunning
+		_ProcessGUIMessages()
+
+		; >>> HIỂN THỊ TOOLTIP THEO DÕI <<<
+		ToolTip("ĐANG RÌNH BÀN " & ($g_iCurrentTableIndex + 1) & @CRLF & "Vùng quét: X1=" & $iX1 & ", Y1=" & $iY1 & " | X2=" & $iX2 & ", Y2=" & $iY2, 10, 10, "Radar Quét")
+
+		; Dùng PixelSearch để quét toàn bộ vùng chữ nhật
+		If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColRed, $iShade, 1, $hWnd)) Then
+			$sFoundResult = "B"
+			ExitLoop
+		ElseIf IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColBlue, $iShade, 1, $hWnd)) Then
+			$sFoundResult = "P"
+			ExitLoop
+		ElseIf IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColGreen, $iShade, 1, $hWnd)) Then
+			$sFoundResult = "T"
+			ExitLoop
+		EndIf
+		Sleep(50) ; Quét liên tục không gây lag
+	WEnd
+
+	ToolTip("") ; Tắt ToolTip khi thấy kết quả
+
+	If Not $g_bIsRunning Then Return ""
+	_UpdateStatus("⚡ Đã thấy kết quả [" & $sFoundResult & "]. Đợi thu dọn bài để cược...")
+
+	; =========================================================
+	; 2. ĐỢI BÀI BIẾN MẤT (Chờ màu biến mất hoàn toàn khỏi khung)
+	; =========================================================
+	While $g_bIsRunning
+		_ProcessGUIMessages()
+
+		; Nếu quét cả khung mà không ra 3 màu kia nữa nghĩa là popup đã dọn đi
+		If Not IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColRed, $iShade, 1, $hWnd)) And _
+				Not IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColBlue, $iShade, 1, $hWnd)) And _
+				Not IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColGreen, $iShade, 1, $hWnd)) Then
+			ExitLoop
+		EndIf
+		Sleep(50)
+	WEnd
+
+	Return $sFoundResult
+EndFunc   ;==>_ScanPopupResult_PP
+; Hàm phụ trợ: Xác minh đó là "mảng màu đặc" của ô kết quả, chứ không phải "nét chữ/chấm bài"
+Func _ScanForSolidBlock($iX1, $iY1, $iX2, $iY2, $iColor, $iShade)
+	; Quét từ dưới lên trên (Step -5), trái qua phải (Step 5)
+	For $y = $iY2 To $iY1 Step -5
+		For $x = $iX1 To $iX2 Step 5
+			Local $c = PixelGetColor($x, $y) ; ĐÃ BỎ $hWnd
+			If _CheckColorRange($c, $iColor, $iShade) Then
+				; Kiểm tra mảng màu to (Cũng bỏ $hWnd)
+				Local $c1 = PixelGetColor($x + 8, $y)
+				Local $c2 = PixelGetColor($x, $y - 8)
+				Local $c3 = PixelGetColor($x + 8, $y - 8)
+
+				Local $iMatch = 0
+				If _CheckColorRange($c1, $iColor, $iShade) Then $iMatch += 1
+				If _CheckColorRange($c2, $iColor, $iShade) Then $iMatch += 1
+				If _CheckColorRange($c3, $iColor, $iShade) Then $iMatch += 1
+
+				If $iMatch >= 2 Then Return True
+			EndIf
+		Next
+	Next
+	Return False
+EndFunc   ;==>_ScanForSolidBlock
+Func _CalculateAndSetTableCoords($iTableIndex)
+    If $iTableIndex == 0 Then
+        _GetAndValidateInputs()
+        Return True
+    EndIf
+
+    Local $iAnchor1X = Number(GUICtrlRead($g_aInput_AnchorX[0]))
+    Local $iAnchor1Y = Number(GUICtrlRead($g_aInput_AnchorY[0]))
+    Local $iAnchorTargetX = Number(GUICtrlRead($g_aInput_AnchorX[$iTableIndex]))
+    Local $iAnchorTargetY = Number(GUICtrlRead($g_aInput_AnchorY[$iTableIndex]))
+
+    If $iAnchor1X = 0 Or $iAnchorTargetX = 0 Then Return False
+
+    Local $iOffsetX = $iAnchorTargetX - $iAnchor1X
+    Local $iOffsetY = $iAnchorTargetY - $iAnchor1Y
+
+    $g_aBankerButtonPos[0] = Number(GUICtrlRead($g_hInput_BankerX)) + $iOffsetX
+    $g_aBankerButtonPos[1] = Number(GUICtrlRead($g_hInput_BankerY)) + $iOffsetY
+
+    $g_aPlayerButtonPos[0] = Number(GUICtrlRead($g_hInput_PlayerX)) + $iOffsetX
+    $g_aPlayerButtonPos[1] = Number(GUICtrlRead($g_hInput_PlayerY)) + $iOffsetY
+
+    $g_aTieButtonPos[0] = Number(GUICtrlRead($g_hInput_TieX)) + $iOffsetX
+    $g_aTieButtonPos[1] = Number(GUICtrlRead($g_hInput_TieY)) + $iOffsetY
+
+    $g_aResultArea[0] = Number(GUICtrlRead($g_hInput_ResultX1)) + $iOffsetX
+    $g_aResultArea[1] = Number(GUICtrlRead($g_hInput_ResultY1)) + $iOffsetY
+    $g_aResultArea[2] = Number(GUICtrlRead($g_hInput_ResultX2)) + $iOffsetX
+    $g_aResultArea[3] = Number(GUICtrlRead($g_hInput_ResultY2)) + $iOffsetY
+
+    $g_aBetTimeIndicatorArea[0] = Number(GUICtrlRead($g_hInput_BetTimeX1)) + $iOffsetX
+    $g_aBetTimeIndicatorArea[1] = Number(GUICtrlRead($g_hInput_BetTimeY1)) + $iOffsetY
+    $g_aBetTimeIndicatorArea[2] = Number(GUICtrlRead($g_hInput_BetTimeX2)) + $iOffsetX
+    $g_aBetTimeIndicatorArea[3] = Number(GUICtrlRead($g_hInput_BetTimeY2)) + $iOffsetY
+
+    Return True
+EndFunc
+
+Func _HandleSequentialTableSwitching()
+    If GUICtrlRead($g_hCheckbox_DuKichDaBan) <> $GUI_CHECKED Then Return False
+
+    Local $iTargetWin = Number(GUICtrlRead($g_hInput_DuKich_WinTable))
+    Local $iTargetLoss = -1 * Number(GUICtrlRead($g_hInput_DuKich_LossTable))
+
+    If $g_iTableProfit_Units >= $iTargetWin Or $g_iTableProfit_Units <= $iTargetLoss Then
+        Local $sReason = ($g_iTableProfit_Units >= $iTargetWin) ? "CHỐT LỜI BÀN" : "CẮT LỖ BÀN"
+        _UpdateStatus("🔄 " & $sReason & " " & ($g_iCurrentTableIndex + 1) & " (" & $g_iTableProfit_Units & " đơn vị). Chuyển Bàn...")
+
+        ReDim $g_aDisplayHistory[0]
+        $g_iHistoryCutoffIndex = 0
+        $g_iTotalBanker = 0
+        $g_iTotalPlayer = 0
+        $g_iTotalTie = 0
+        $g_iCapitalLevel = 0
+        $g_iLastActiveRuleIndex = -1
+        $g_iTableProfit_Units = 0
+        _RedrawHistory()
+
+        $g_iCurrentTableIndex += 1
+
+        If $g_iCurrentTableIndex > 11 Then
+            Local $iRestMins = Number(GUICtrlRead($g_hInput_DuKich_RestTime))
+            _UpdateStatus("💤 Đã hoàn tất 12 bàn! Tool ngủ đông " & $iRestMins & " phút...")
+            Sleep($iRestMins * 60000)
+            $g_iCurrentTableIndex = 0
+            _UpdateStatus("🚀 Hết giờ nghỉ! Tái khởi động vòng 12 bàn mới...")
+        EndIf
+
+        _CalculateAndSetTableCoords($g_iCurrentTableIndex)
+        _UpdateStatus("✅ Đã ngắm trúng Bàn " & ($g_iCurrentTableIndex + 1) & ". Đang rình...")
+        Return True
+    EndIf
+    Return False
+EndFunc
+
+Func _WaitPopupAppear_Laser()
+	Local $hWnd = $g_hTargetGameWin
+	If $hWnd = 0 Or Not WinExists($hWnd) Then Return ""
+
+	; Lấy đúng 4 góc của hình chữ nhật mà sếp đã cấu hình
+	Local $iX1 = $g_aResultArea[0]
+	Local $iY1 = $g_aResultArea[1]
+	Local $iX2 = $g_aResultArea[2]
+	Local $iY2 = $g_aResultArea[3]
+
+	Local $iColRed = Number(GUICtrlRead($g_hInput_BankerColor))
+	Local $iColBlue = Number(GUICtrlRead($g_hInput_PlayerColor))
+	Local $iColGreen = Number(GUICtrlRead($g_hInput_TieColor))
+	Local $iShade = Number(GUICtrlRead($g_hInput_Shade_Result))
+
+	_UpdateStatus("👁️ [LASER] Tia Laser đang khóa mục tiêu vùng chữ nhật, rình Dealer lật bài...")
+
+	While $g_bIsRunning
+		_ProcessGUIMessages()
+
+		; Quét toàn bộ không gian từ X1,Y1 đến X2,Y2. Thấy màu nào chốt màu đó.
+		If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColBlue, $iShade, 1, $hWnd)) Then Return "P"
+		If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColRed, $iShade, 1, $hWnd)) Then Return "B"
+		If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColGreen, $iShade, 1, $hWnd)) Then Return "T"
+
+		Sleep(20) ; Nghỉ 20ms nhịp nhàng
+	WEnd
+	Return ""
+EndFunc
+Func _WaitPopupDisappear_Laser()
+    Local $hWnd = $g_hTargetGameWin
+    If $hWnd = 0 Or Not WinExists($hWnd) Then Return False
+
+    Local $iX1 = $g_aResultArea[0]
+    Local $iY1 = $g_aResultArea[1]
+    Local $iX2 = $g_aResultArea[2]
+    Local $iY2 = $g_aResultArea[3]
+
+    Local $iColRed = Number(GUICtrlRead($g_hInput_BankerColor))
+    Local $iColBlue = Number(GUICtrlRead($g_hInput_PlayerColor))
+    Local $iColGreen = Number(GUICtrlRead($g_hInput_TieColor))
+
+    Local $iShade = Number(GUICtrlRead($g_hInput_Shade_Result))
+    If $iShade > 25 Then $iShade = 25 ; Ép dung sai thấp xuống lúc chờ biến mất để tránh quét rác
+
+    _UpdateStatus("🧹 [SYSTEM] Bài đang hiển thị. Đợi thu dọn bàn sạch sẽ để chốt vòng lặp...")
+
+    Local $hDisappearTimer = TimerInit()
+    Local $bIsXocDia = (GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED)
+
+    While $g_bIsRunning
+        _ProcessGUIMessages()
+        Local $bStillThere = False
+
+        ; Luôn quét màu Đỏ (Chẵn) và Xanh (Lẻ)
+        If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColBlue, $iShade, 1, $hWnd)) Then $bStillThere = True
+        If Not $bStillThere And IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColRed, $iShade, 1, $hWnd)) Then $bStillThere = True
+
+        ; CHỈ quét màu Hòa (Xanh Lá) nếu KHÔNG PHẢI chơi Xóc Đĩa
+        If Not $bIsXocDia And Not $bStillThere Then
+            If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColGreen, $iShade, 1, $hWnd)) Then $bStillThere = True
+        EndIf
+
+        If $bStillThere Then
+            ; Nếu màu vẫn còn -> Reset đồng hồ
+            $hDisappearTimer = TimerInit()
+        Else
+            ; Nếu ĐÃ SẠCH MÀU -> Đợi 1 giây để dứt điểm popup không bị chớp nháy
+            If TimerDiff($hDisappearTimer) > 1000 Then
+                Return True
+            EndIf
+        EndIf
+
+        Sleep(50)
+    WEnd
+    Return False
+EndFunc
+Func _IsLargeObject($hWnd, $X, $Y, $iColor, $iShade, $iSize)
+	Local $cRight = PixelGetColor($X + $iSize, $Y, $hWnd)
+	Local $cDown  = PixelGetColor($X, $Y + $iSize, $hWnd)
+	Local $cDiag  = PixelGetColor($X + $iSize, $Y + $iSize, $hWnd)
+
+	Local $bRight = _CheckColorRange($cRight, $iColor, $iShade)
+	Local $bDown  = _CheckColorRange($cDown, $iColor, $iShade)
+	Local $bDiag  = _CheckColorRange($cDiag, $iColor, $iShade)
+
+	Local $iMatch = 0
+	If $bRight Then $iMatch += 1
+	If $bDown  Then $iMatch += 1
+	If $bDiag  Then $iMatch += 1
+
+	Return ($iMatch >= 1)
+EndFunc
+; --- HÀM 3: BỘ LỌC KÍCH THƯỚC VẬT THỂ ---
+Func _TestCurrentTableZones()
+    Local $hDC = _WinAPI_GetDC(0)
+    Local $hPenRes = _WinAPI_CreatePen($PS_SOLID, 3, 0x0000FF) ; Khung Đỏ (KQ)
+    Local $hPenTime = _WinAPI_CreatePen($PS_SOLID, 3, 0x00FF00) ; Khung Xanh Lá (Giờ Cược)
+    Local $hOldPen = _WinAPI_SelectObject($hDC, $hPenRes)
+    _WinAPI_SelectObject($hDC, _WinAPI_GetStockObject($NULL_BRUSH)) ; Rỗng ruột
+
+    ; 1. Vẽ Vùng Kết Quả (Đỏ) - Đóng gói vào biến RECT Struct
+    Local $tRectRes = _WinAPI_CreateRectEx($g_aResultArea[0], $g_aResultArea[1], $g_aResultArea[2], $g_aResultArea[3])
+    _WinAPI_Rectangle($hDC, $tRectRes)
+
+    ; 2. Vẽ Vùng Giờ Cược (Xanh lá) - Đóng gói vào biến RECT Struct
+    _WinAPI_SelectObject($hDC, $hPenTime)
+    Local $tRectTime = _WinAPI_CreateRectEx($g_aBetTimeIndicatorArea[0], $g_aBetTimeIndicatorArea[1], $g_aBetTimeIndicatorArea[2], $g_aBetTimeIndicatorArea[3])
+    _WinAPI_Rectangle($hDC, $tRectTime)
+
+    ; Dọn dẹp
+    _WinAPI_SelectObject($hDC, $hOldPen)
+    _WinAPI_DeleteObject($hPenRes)
+    _WinAPI_DeleteObject($hPenTime)
+    _WinAPI_ReleaseDC(0, $hDC)
+
+    _UpdateStatus("🔍 TEST TỌA ĐỘ BÀN " & ($g_iCurrentTableIndex + 1) & ": Khung Đỏ (KQ), Khung Xanh (Giờ cược)")
+EndFunc
+Func _HuntForNewShoeTable()
+	_UpdateStatus("🔍 Đang khởi động Radar tìm BÀN MỚI (Trắng cầu)...")
+
+	; Đọc mã màu RIÊNG BIỆT của Radar (Nếu quên lấy, tự động dự phòng bằng màu KQ cũ)
+	Local $iColRadarRed = Number(GUICtrlRead($g_hInput_RadarRed))
+	If $iColRadarRed == 0 Then $iColRadarRed = Number(GUICtrlRead($g_hInput_BankerColor))
+
+	Local $iColRadarBlue = Number(GUICtrlRead($g_hInput_RadarBlue))
+	If $iColRadarBlue == 0 Then $iColRadarBlue = Number(GUICtrlRead($g_hInput_PlayerColor))
+
+	Local $iColGreen = Number(GUICtrlRead($g_hInput_TieColor))
+
+	Local $iRadarShade = 20 ; Dung sai cực kỳ an toàn vì màu đã được khóa chuẩn
+
+	Local $iBaseCellX = Number(GUICtrlRead($g_hInput_FirstCellX))
+	Local $iBaseCellY = Number(GUICtrlRead($g_hInput_FirstCellY))
+
+	If $iBaseCellX = 0 Or $iBaseCellY = 0 Then
+		_UpdateStatus("⚠️ Lỗi: Sếp chưa lấy tọa độ Ô Cầu Đầu Tiên (Bàn 1) cho tính năng Săn Bàn Mới!")
+		Return -1
+	EndIf
+
+	Local $iBoxSize = 15 ; Khung quét 30x30 pixel
+
+	While $g_bIsRunning
+		If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then
+			WinActivate($g_hTargetGameWin)
+			Sleep(300)
+		EndIf
+
+		For $i = 0 To 11
+			_CalculateAndSetTableCoords($i)
+
+			Local $iAnchor1X = Number(GUICtrlRead($g_aInput_AnchorX[0]))
+			Local $iAnchor1Y = Number(GUICtrlRead($g_aInput_AnchorY[0]))
+			Local $iAnchorTargetX = Number(GUICtrlRead($g_aInput_AnchorX[$i]))
+			Local $iAnchorTargetY = Number(GUICtrlRead($g_aInput_AnchorY[$i]))
+
+			Local $iTargetCellX = $iBaseCellX + ($iAnchorTargetX - $iAnchor1X)
+			Local $iTargetCellY = $iBaseCellY + ($iAnchorTargetY - $iAnchor1Y)
+
+			Local $iStartX = $iTargetCellX - $iBoxSize
+			Local $iStartY = $iTargetCellY - $iBoxSize
+			Local $iEndX = $iTargetCellX + $iBoxSize
+			Local $iEndY = $iTargetCellY + $iBoxSize
+
+			Local $bIsEmpty = True
+			For $k = 1 To 3
+				Local $bHasColor = False
+
+				; Dùng màu Radar riêng biệt để đối chiếu
+				If IsArray(PixelSearch($iStartX, $iStartY, $iEndX, $iEndY, $iColRadarRed, $iRadarShade, 1)) Then $bHasColor = True
+				If Not $bHasColor And IsArray(PixelSearch($iStartX, $iStartY, $iEndX, $iEndY, $iColRadarBlue, $iRadarShade, 1)) Then $bHasColor = True
+				If Not $bHasColor And IsArray(PixelSearch($iStartX, $iStartY, $iEndX, $iEndY, $iColGreen, $iRadarShade, 1)) Then $bHasColor = True
+
+				If $bHasColor Then
+					$bIsEmpty = False
+					ExitLoop
+				EndIf
+				Sleep(300)
+			Next
+
+			If $bIsEmpty Then
+				$g_iCurrentTableIndex = $i
+				_UpdateStatus("🎯 Phát hiện Bàn " & ($i + 1) & " là BÀN MỚI! Khóa mục tiêu.")
+
+				ReDim $g_aDisplayHistory[0]
+				$g_iHistoryCutoffIndex = 0
+				$g_iCapitalLevel = 0
+				$g_iLastActiveRuleIndex = -1
+				$g_fTableProfit_RealUnits = 0.0
+				_RedrawHistory()
+
+				Return $i
+			EndIf
+		Next
+
+		_UpdateStatus("⏳ 12 bàn đều đang có cầu dở dang. Chờ 15s rồi lùng lại...")
+		Sleep(15000)
+	WEnd
+	Return -1
+EndFunc
+Func _TestRadarZones()
+	Local $hDC = _WinAPI_GetDC(0)
+	; Tạo bút vẽ màu Tím (0xFF00FF) độ dày 3 pixel
+	Local $hPenRadar = _WinAPI_CreatePen(0, 3, 0xFF00FF)
+	Local $hOldPen = _WinAPI_SelectObject($hDC, $hPenRadar)
+
+	Local $iBaseCellX = Number(GUICtrlRead($g_hInput_FirstCellX))
+	Local $iBaseCellY = Number(GUICtrlRead($g_hInput_FirstCellY))
+
+	If $iBaseCellX = 0 Or $iBaseCellY = 0 Then
+		MsgBox(48, "Lỗi Test", "Sếp chưa lấy tọa độ Ô Cầu Đầu Tiên ở Bàn 1!")
+		_WinAPI_SelectObject($hDC, $hOldPen)
+		_WinAPI_DeleteObject($hPenRadar)
+		_WinAPI_ReleaseDC(0, $hDC)
+		Return
+	EndIf
+
+	Local $iBoxSize = 15 ; Khung 30x30 (15 pixel mỗi bên)
+
+	; Vẽ 12 ô vuông tương ứng 12 bàn
+	For $i = 0 To 11
+		_CalculateAndSetTableCoords($i)
+
+		Local $iAnchor1X = Number(GUICtrlRead($g_aInput_AnchorX[0]))
+		Local $iAnchor1Y = Number(GUICtrlRead($g_aInput_AnchorY[0]))
+		Local $iAnchorTargetX = Number(GUICtrlRead($g_aInput_AnchorX[$i]))
+		Local $iAnchorTargetY = Number(GUICtrlRead($g_aInput_AnchorY[$i]))
+
+		Local $iTargetCellX = $iBaseCellX + ($iAnchorTargetX - $iAnchor1X)
+		Local $iTargetCellY = $iBaseCellY + ($iAnchorTargetY - $iAnchor1Y)
+
+		; Tính toán 4 góc
+		Local $iLeft = $iTargetCellX - $iBoxSize
+		Local $iTop = $iTargetCellY - $iBoxSize
+		Local $iRight = $iTargetCellX + $iBoxSize
+		Local $iBottom = $iTargetCellY + $iBoxSize
+
+		; Vẽ 4 cạnh thủ công (Cách này an toàn tuyệt đối, không bao giờ lỗi Struct)
+		_WinAPI_MoveTo($hDC, $iLeft, $iTop)
+		_WinAPI_LineTo($hDC, $iRight, $iTop)      ; Cạnh trên
+		_WinAPI_LineTo($hDC, $iRight, $iBottom)   ; Cạnh phải
+		_WinAPI_LineTo($hDC, $iLeft, $iBottom)    ; Cạnh dưới
+		_WinAPI_LineTo($hDC, $iLeft, $iTop)       ; Cạnh trái
+	Next
+
+	_WinAPI_SelectObject($hDC, $hOldPen)
+	_WinAPI_DeleteObject($hPenRadar)
+	_WinAPI_ReleaseDC(0, $hDC)
+
+	_UpdateStatus("🔍 TEST X-QUANG: Đã vẽ 12 ô vuông Tím quanh các điểm Radar săn bàn!")
+EndFunc
+; =====================================================================
+; HÀM DI CHUYỂN CHUỘT MA (MÔ PHỎNG NGƯỜI THẬT)
+; =====================================================================
+Func _MouseMove_Human($iStartX, $iStartY, $iEndX, $iEndY, $iSteps = 40)
+	; Tạo 2 điểm neo ngẫu nhiên (Control Points) để làm cong đường đi
+	Local $iCtrl1X = $iStartX + Random(-150, 150, 1) + ($iEndX - $iStartX) / 3
+	Local $iCtrl1Y = $iStartY + Random(-150, 150, 1) + ($iEndY - $iStartY) / 3
+	Local $iCtrl2X = $iStartX + Random(-150, 150, 1) + ($iEndX - $iStartX) * 2 / 3
+	Local $iCtrl2Y = $iStartY + Random(-150, 150, 1) + ($iEndY - $iStartY) * 2 / 3
+
+	; Di chuyển dọc theo đường cong Bezier
+	For $i = 1 To $iSteps
+		Local $t = $i / $iSteps
+		Local $u = 1 - $t
+		Local $tt = $t * $t
+		Local $uu = $u * $u
+		Local $uuu = $uu * $u
+		Local $ttt = $tt * $t
+
+		; Tính toán tọa độ x, y từng bước
+		Local $pX = $uuu * $iStartX + 3 * $uu * $t * $iCtrl1X + 3 * $u * $tt * $iCtrl2X + $ttt * $iEndX
+		Local $pY = $uuu * $iStartY + 3 * $uu * $t * $iCtrl1Y + 3 * $u * $tt * $iCtrl2Y + $ttt * $iEndY
+
+		MouseMove($pX, $pY, 0) ; Di chuyển tức thì đến điểm ảnh kế tiếp
+
+		; Tốc độ biến thiên: Chậm ở 2 đầu, lướt nhanh ở giữa
+		Local $iDelay = Random(1, 3, 1)
+		If $i < ($iSteps / 5) Or $i > ($iSteps * 4 / 5) Then $iDelay = Random(4, 8, 1)
+
+		Sleep($iDelay)
+	Next
+
+	; Đảm bảo điểm đáp cuối cùng chính xác 100% vào tâm phỉnh
+	MouseMove($iEndX, $iEndY, 0)
+EndFunc
+Func _RealTimeCurrencyFormat($hInput)
+	Local $sText = GUICtrlRead($hInput)
+	If $sText == "" Or $sText == "-" Then Return
+
+	Local $bIsNegative = (StringLeft($sText, 1) == "-")
+	Local $sRaw = StringRegExpReplace($sText, "[^0-9]", "")
+	If $sRaw == "" Then Return
+
+	Local $sNew = StringRegExpReplace(String(Int($sRaw)), '(\d)(?=(\d{3})+(?!\d))', '$1.')
+	If $bIsNegative Then $sNew = "-" & $sNew
+
+	If $sText <> $sNew Then
+		GUICtrlSetData($hInput, $sNew)
+		; Ép con trỏ chuột (cursor) nhảy về cuối cùng để gõ liên tục không bị ngược
+		GUICtrlSendMsg($hInput, 0x00B1, StringLen($sNew), StringLen($sNew))
+		$g_bNeedAutoSave = True
+		$g_hAutoSaveTimer = TimerInit()
+	EndIf
+EndFunc
+Func _ApplyCustomerFeatures()
+    ; 1. NẾU LÀ ADMIN -> HIỆN TẤT CẢ VÀ ĐỔI NÚT THÀNH XANH LÁ
+    If StringUpper($g_sCustomerRole) == "ADMIN" Then
+        _ToggleTechRoom($GUI_SHOW)
+        _ToggleConfigControlsState(True)  ; <--- THÊM DÒNG NÀY CHO ADMIN
+
+        GUICtrlSetData($g_hButton_Unlock, "🔓 KHÓA LẠI")
+        GUICtrlSetBkColor($g_hButton_Unlock, 0x33CC33)
+        Return
+    EndIf
+
+    ; =========================================================
+    ; 2. QUÉT TÌM TOÀN BỘ SẢNH CỦA RIÊNG KHÁCH HÀNG NÀY
+    ; =========================================================
+    Local $sUsername = $g_sCustomerLogin ; Ví dụ: thuydung
+    Local $aAllSections = IniReadSectionNames($g_sIniPath) ; Đọc toàn bộ file config
+    Local $sUserProfiles = "|" ; Dấu | ở đầu để xóa sạch menu cũ
+    Local $sFirstProfileToLoad = ""
+    Local $iProfileCount = 0
+
+    If Not @error Then
+        ; Chạy vòng lặp kiểm tra từng sảnh trong file config
+        For $i = 1 To $aAllSections[0]
+            ; Nếu tên sảnh có chứa chữ "Profile_thuydung_"
+            If StringInStr($aAllSections[$i], "Profile_" & $sUsername & "_") = 1 Then
+                ; Cắt bỏ chữ "Profile_" đi cho đẹp, chỉ lấy "thuydung_EvoVIP"
+                Local $sCleanName = StringReplace($aAllSections[$i], "Profile_", "")
+
+                $sUserProfiles &= $sCleanName & "|"
+                If $sFirstProfileToLoad == "" Then $sFirstProfileToLoad = $sCleanName
+                $iProfileCount += 1
+            EndIf
+        Next
+    EndIf
+
+    ; =========================================================
+    ; 3. CẤP PHÁT GIAO DIỆN DỰA TRÊN KẾT QUẢ TÌM ĐƯỢC
+    ; =========================================================
+If $iProfileCount > 0 Then
+        ; Nếu tìm thấy sảnh: Nhét toàn bộ danh sách vào Menu
+        GUICtrlSetData($g_hCombo_Profiles_Main, $sUserProfiles, $sFirstProfileToLoad)
+
+        ; MỞ KHÓA MENU CHO KHÁCH TỰ DO CHỌN SẢNH
+        GUICtrlSetState($g_hCombo_Profiles_Main, $GUI_ENABLE)
+
+        ; Tự động nạp sảnh đầu tiên trong danh sách lên giao diện
+        _LoadSelectedProfile($sFirstProfileToLoad)
+
+        ; Chạy bộ máy Ẩn/Hiện giao diện (đã được vá lỗi né Xóc Đĩa ở bước 1)
+        _ExecuteHideShow()
+
+		; ---> ÉP QUÉT LẠI GIAO DIỆN LẦN CUỐI ĐỂ DỌN SẠCH BÓNG MA CHỒNG CHÉO <---
+		_ToggleGameModeUI()
+
+        _UpdateStatus("✅ Đã tải thành công " & $iProfileCount & " cấu hình dành riêng cho: " & $sUsername)
+Else
+        ; Nếu khách mới toanh chưa có sảnh nào
+        GUICtrlSetState($g_hCombo_Profiles_Main, $GUI_DISABLE)
+        MsgBox(48, "Thông báo", "Tài khoản của bạn hiện chưa có Cấu hình/Sảnh game nào." & @CRLF & "Vui lòng liên hệ Admin để được cấp phát!")
+        Exit
+    EndIf
+
+; 4. CHỐT CHẶN CUỐI CÙNG CHO KHÁCH HÀNG
+    _ToggleTechRoom($GUI_HIDE)
+    _ToggleConfigControlsState(False) ; <--- THÊM DÒNG NÀY ĐỂ KHÓA ĐỐI VỚI KHÁCH
+
+    GUICtrlSetData($g_hButton_Unlock, "🔐 MỞ KHÓA")
+    GUICtrlSetBkColor($g_hButton_Unlock, 0xFF4141)
+EndFunc
+Func _CheckLoginOnline($sUsername, $sHWID)
+    Local $sUrl = $g_sAppsScriptBaseURL & "?action=check_login&username=" & $sUsername & "&hwid=" & $sHWID & "&nocache=" & TimerInit()
+    Local $sData = BinaryToString(InetRead($sUrl, 3), 4)
+
+    Local $oJson = Json_Decode($sData)
+    Local $sStatus = Json_Get($oJson, "[status]")
+
+; 1. Bắt lỗi sai tên hoặc bị khóa từ Server trả về
+    If $sStatus == "ERROR" Then
+        Local $sMsg = Json_Get($oJson, "[msg]")
+        ; Báo lỗi và nhắc khách copy HWID
+        MsgBox(16, "Lỗi đăng nhập", $sMsg & @CRLF & @CRLF & "Mã máy của bạn: " & $sHWID & @CRLF & "Vui lòng copy mã này gửi cho Admin để được cấp quyền!")
+        Return False
+    EndIf
+    ; 2. Lấy mã quyền (Dữ liệu từ cột NOTE)
+    $g_sCustomerRole = StringStripWS(Json_Get($oJson, "[role]"), 3)
+
+    ; 3. CHỈ KIỂM TRA RỖNG (Không khóa cứng tên gói nữa để tool tự do nhận tên sảnh)
+    If $g_sCustomerRole == "" Then
+        MsgBox(16, "Lỗi hệ thống", "Tài khoản này chưa được điền quyền ở cột NOTE trên Google Sheets!")
+        Return False
+    EndIf
+
+    Return True
+EndFunc
+Func _ExecuteHideShow()
+    ; Ép hiển thị luôn các ô Chốt Lời / Cắt Lỗ Tổng cho khách hàng thấy
+    GUICtrlSetState($g_hInput_DailyTarget, $GUI_SHOW)
+    GUICtrlSetState($g_hInput_DailyTrailing, $GUI_SHOW)
+    GUICtrlSetState($g_hInput_DailyStopLoss, $GUI_SHOW)
+    GUICtrlSetState($g_hCheckbox_DailyShield, $GUI_SHOW)
+
+    ; ---> CHỐT CHẶN BẢO VỆ GIAO DIỆN XÓC ĐĨA <---
+    If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+        Return ; Nếu khách đang chạy Xóc Đĩa VIP thì dừng hàm ở đây, để hệ thống Xóc đĩa tự quản lý hiển thị
+    EndIf
+
+    ; Giữ lại các lệnh hiển thị cũ (Chỉ chạy khi khách dùng Baccarat)
+    If StringStripWS(GUICtrlRead($g_hInput_CustomRules), 8) == "" Then
+        GUICtrlSetState($g_hInput_CustomRules, $GUI_HIDE)
+    Else
+        GUICtrlSetState($g_hInput_CustomRules, $GUI_SHOW)
+    EndIf
+
+    GUICtrlSetState($g_hInput_CustomQLV_Edit, $GUI_SHOW)
+    GUICtrlSetState($g_hCombo_QLV_Presets, $GUI_SHOW)
+    GUICtrlSetState($g_hButton_SaveQLV, $GUI_SHOW)
+    GUICtrlSetState($g_hButton_DeleteQLV, $GUI_SHOW)
+EndFunc
+; Hàm phụ trợ ép lệnh HIDE/SHOW siêu tốc (Nâng cấp tối đa 20 biến)
+Func _ToggleHideShow($iIndex, $c1=0, $c2=0, $c3=0, $c4=0, $c5=0, $c6=0, $c7=0, $c8=0, $c9=0, $c10=0, $c11=0, $c12=0, $c13=0, $c14=0, $c15=0, $c16=0, $c17=0, $c18=0, $c19=0, $c20=0)
+    Local $iState = $GUI_SHOW
+    ; Nếu Admin có đánh dấu tích vào bảng ở dòng thứ $iIndex -> Chuyển trạng thái thành HIDE
+    If _GUICtrlListView_GetItemChecked($g_hAdminHideList, $iIndex) Then $iState = $GUI_HIDE
+
+    Local $aControls[20] = [$c1, $c2, $c3, $c4, $c5, $c6, $c7, $c8, $c9, $c10, $c11, $c12, $c13, $c14, $c15, $c16, $c17, $c18, $c19, $c20]
+
+    For $i = 0 To 19
+        If $aControls[$i] <> 0 And $aControls[$i] <> "" Then GUICtrlSetState($aControls[$i], $iState)
+    Next
+EndFunc
+Func _ToggleTechRoom($iState)
+	For $i = $g_iTechTabStart To $g_iTechTabEnd
+		; Không được ẩn chính 2 cái cột mốc Dummy đi (Gây lỗi vòng lặp)
+		If $i <> $g_iTechTabStart And $i <> $g_iTechTabEnd Then
+			GUICtrlSetState($i, $iState)
+		EndIf
+	Next
+EndFunc
+
+Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
+    Local $aResult[3] = ["OBSERVE", "", 0]
+    Local $sHist = StringRegExpReplace($sHistoryRaw, "[^CL]", "") ; Đã chuyển sang lấy chữ C và L
+    Local $iLen = StringLen($sHist)
+
+    ; 1. LẤY MẪU
+    If $iLen < 4 Then
+        _UpdateStatus("📡 [HỆ THỐNG] Đang lấy mẫu (" & $iLen & "/4 tay). Lịch sử hiện hành: [" & $sHist & "]")
+        Return $aResult
+    EndIf
+
+    ; 2. PHÂN TÍCH
+    Local $sTarget = StringMid($sHist, $iLen - 3, 1)
+	Local $sKhung4Tay = StringRight($sHist, 4)
+	_UpdateStatus("🎯 [PHÂN TÍCH] Khuôn 4 tay: [" & $sKhung4Tay & "] -> Luật bảo toàn tỷ lệ: Đánh [" & $sTarget & "]")
+
+; 3. KIỂM TRA NỢ NẦN & VỐN (TỰ ĐỘNG CẮT LỖ THEO CHUỖI NHẬP)
+    Local $iCurrentStep = $g_aTierStep[$g_iCurrentTier]
+
+If $iCurrentStep > $g_iDynamicMaxSteps Then
+        _UpdateStatus("⚠️ [CẮT LỖ] Chạm mốc gãy " & $g_iDynamicMaxSteps & " tay! Đã cắt lỗ, Reset toàn bộ hệ thống nợ về Hàng 1 Bước 1.")
+        For $i = 1 To 10 ; <--- Reset sạch nợ cho toàn bộ 10 Hàng
+            $g_aTierStep[$i] = 1
+        Next
+        $g_iCurrentTier = 1
+        $iCurrentStep = 1
+EndIf
+Local $iBetAmount = $g_aXocDia_Seq[$iCurrentStep]
+
+; Báo cáo tình trạng nợ hàng trên
+    Local $sDebtLog = ""
+    If $g_iCurrentTier > 1 Then
+        $sDebtLog = " (Hàng trên H" & ($g_iCurrentTier - 1) & " nợ Bước " & $g_aTierStep[$g_iCurrentTier - 1] & ")"
+    Else
+        $sDebtLog = " (Đỉnh Hàng 1, không nợ)"
+    EndIf
+
+    ; Hiển thị rành mạch lên TV Screen
+    _UpdateStatus("💰 [VỐN] HÀNG " & $g_iCurrentTier & " (Lệnh x" & $iCurrentStep & ")" & $sDebtLog)
+    _UpdateStatus("💸 [VÀO TIỀN] Cược " & _FormatNumber($iBetAmount) & "đ vào [" & $sTarget & "]")
+
+    ; Cập nhật rành mạch lên nhãn Trạng Thái UI (Yêu cầu 6)
+    GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $g_aTierStep[$g_iCurrentTier] & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($iBetAmount) & "đ VÀO [" & $sTarget & "]")
+
+    $aResult[0] = "BET"
+    $aResult[1] = $sTarget
+    $aResult[2] = $iBetAmount
+
+    If $iBetAmount > 500000 Then
+        _SwitchLimit_VIP("20-50K")
+    Else
+        _SwitchLimit_VIP("10-500")
+    EndIf
+
+    _UpdateXocDiaGridUI() ; <--- CHÈN DÒNG NÀY Ở ĐÂY ĐỂ BẢNG LED ĐỔI MÀU LÚC ĐÁNH
+
+    $aResult[0] = "BET"
+    Return $aResult
+EndFunc
+Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
+    Local $bIsWin = ($sActualResult == $sBetOn)
+
+    Local $iTargetRows = Number(GUICtrlRead($g_hInput_XD_MaxRows))
+    If $iTargetRows < 1 Then $iTargetRows = 1
+    If $iTargetRows > 10 Then $iTargetRows = 10
+
+    If $bIsWin Then
+        _UpdateStatus("✅ [KẾT QUẢ] Húp [" & $sActualResult & "]! -> Xóa nợ Hàng " & $g_iCurrentTier & " và bay về Hàng 1.")
+
+        ; CHỈ xóa nợ của hàng vừa thắng, tuyệt đối giữ nguyên nợ treo của các hàng khác
+        $g_aTierStep[$g_iCurrentTier] = 1
+
+        ; Bay về đỉnh đánh lại từ đầu
+        $g_iCurrentTier = 1
+    Else
+        _UpdateStatus("❌ [KẾT QUẢ] Gãy [" & $sBetOn & "]. -> Ghi nợ Hàng " & $g_iCurrentTier & ", lùi xuống kiểm tra.")
+
+        ; Ghi nợ cho hàng vừa thua
+        $g_aTierStep[$g_iCurrentTier] += 1
+
+        ; Lùi xuống hàng dưới (nếu chưa chạm đáy) để lôi nợ cũ ra đánh
+        If $g_iCurrentTier < $iTargetRows Then
+            $g_iCurrentTier += 1
+        EndIf
+    EndIf
+
+    _UpdateXocDiaGridUI()
+EndFunc
+Func _SwitchLimit_VIP($sTargetLimit)
+    ; 1. NẾU ĐANG ĐÚNG MỐC RỒI -> BỎ QUA LUÔN (Chống kẹt nút)
+    If $g_sCurrentLimitState == $sTargetLimit Then Return
+
+    Local $hWnd = $g_hTargetGameWin
+    If $hWnd = 0 Or Not WinExists($hWnd) Then Return
+
+    _UpdateStatus("⚙️ Bẻ Hạn Mức nhanh sang: [" & $sTargetLimit & "]...")
+
+    ; 2. Click mở bảng Hạn Mức
+    _SingleClick($hWnd, $g_iLimitBtnX + Random(-2, 2, 1), $g_iLimitBtnY + Random(-2, 2, 1), 2)
+    Sleep(200) ; Giảm thời gian chờ mở bảng xuống 200ms
+
+    ; 3. Click chọn mốc 10-500 hoặc 20-50K
+    If $sTargetLimit == "10-500" Then
+        _SingleClick($hWnd, $g_iLimit10_500X + Random(-2, 2, 1), $g_iLimit10_500Y + Random(-2, 2, 1), 2)
+    Else
+        _SingleClick($hWnd, $g_iLimit20_50KX + Random(-2, 2, 1), $g_iLimit20_50KY + Random(-2, 2, 1), 2)
+    EndIf
+    Sleep(200) ; Giảm thời gian chờ chọn mốc xuống 200ms
+
+    ; 4. Bấm nút Xác Nhận Vàng
+    If $g_iLimitConfirmX > 0 And $g_iLimitConfirmY > 0 Then
+        Local $iTargetX = $g_iLimitConfirmX + Random(-3, 3, 1)
+        Local $iTargetY = $g_iLimitConfirmY + Random(-2, 2, 1)
+
+        MouseMove($iTargetX, $iTargetY, 0)
+        Sleep(80)
+        MouseDown("left")
+        Sleep(120) ; Giữ chuột gọn trong 120ms là đủ dính
+        MouseUp("left")
+    EndIf
+
+    ; 5. CHỐT CHẶN SIÊU TỐC: Chỉ chờ 250ms để bảng thu dọn là phóng tay lấy chip ngay
+    Sleep(250)
+
+    $g_sCurrentLimitState = $sTargetLimit
+    _UpdateStatus("✅ Đã đổi limit cực nhanh!")
+EndFunc
+Func _ToggleGameModeUI()
+    If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+        ; 1. Đổi Text màn hình chính thành C/L
+        GUICtrlSetData($g_hLbl_B, "C:")
+        GUICtrlSetData($g_hLbl_P, "L:")
+        GUICtrlSetState($g_hLbl_T, $GUI_HIDE)
+        GUICtrlSetState($g_hLabel_TotalT_Val, $GUI_HIDE)
+
+        ; 2. Đổi nhãn trong Phòng Kỹ Thuật thành Chẵn/Lẻ
+        GUICtrlSetData($g_hLbl_Coord_B, "Chẵn (X, Y):")
+        GUICtrlSetData($g_hLbl_Coord_P, "Lẻ (X, Y):")
+        GUICtrlSetData($g_hLbl_Coord_T, "Bỏ Qua (X,Y):")
+        GUICtrlSetData($g_hLbl_Color_B, "Màu C/L:")
+        GUICtrlSetData($g_hButton_GetBankerColor, "Lấy C")
+        GUICtrlSetData($g_hButton_GetPlayerColor, "Lấy L")
+        GUICtrlSetData($g_hButton_GetTieColor, "-")
+
+		; Bổ sung: Ép ẩn sạch tọa độ & màu của cửa HÒA
+        GUICtrlSetState($g_hLbl_Coord_T, $GUI_HIDE)
+        GUICtrlSetState($g_hInput_TieX, $GUI_HIDE)
+        GUICtrlSetState($g_hInput_TieY, $GUI_HIDE)
+        GUICtrlSetState($g_hButton_GetTiePos, $GUI_HIDE)
+        GUICtrlSetState($g_hInput_TieColor, $GUI_HIDE)
+        GUICtrlSetState($g_hButton_GetTieColor, $GUI_HIDE)
+
+        ; 3. Ẩn cụm Baccarat, Hiện cụm Xóc đĩa VIP
+        _ToggleBaccaratLeftColumn($GUI_HIDE)
+        _ToggleXocDiaGridState($GUI_SHOW)
+        _UpdateXocDiaGridUI()
+    Else
+        ; 1. Trả về màn hình chính B/P
+        GUICtrlSetData($g_hLbl_B, "B:")
+        GUICtrlSetData($g_hLbl_P, "P:")
+        GUICtrlSetState($g_hLbl_T, $GUI_SHOW)
+        GUICtrlSetState($g_hLabel_TotalT_Val, $GUI_SHOW)
+
+        ; BỔ SUNG: Gọi HIỆN lại các ô nhập tọa độ và màu của cửa HÒA
+        GUICtrlSetState($g_hLbl_Coord_T, $GUI_SHOW)
+        GUICtrlSetState($g_hInput_TieX, $GUI_SHOW)
+        GUICtrlSetState($g_hInput_TieY, $GUI_SHOW)
+        GUICtrlSetState($g_hButton_GetTiePos, $GUI_SHOW)
+        GUICtrlSetState($g_hInput_TieColor, $GUI_SHOW)
+        GUICtrlSetState($g_hButton_GetTieColor, $GUI_SHOW)
+
+        ; 2. Trả về Phòng Kỹ Thuật Banker/Player
+        GUICtrlSetData($g_hLbl_Coord_B, "Banker (X, Y):")
+        GUICtrlSetData($g_hLbl_Coord_P, "Player (X, Y):")
+        GUICtrlSetData($g_hLbl_Coord_T, "Hòa/Tie (X,Y):")
+        GUICtrlSetData($g_hLbl_Color_B, "Màu B/P:")
+        GUICtrlSetData($g_hButton_GetBankerColor, "Lấy B")
+        GUICtrlSetData($g_hButton_GetPlayerColor, "Lấy P")
+        GUICtrlSetData($g_hButton_GetTieColor, "Lấy T")
+
+        ; 3. Hiện cụm Baccarat
+        _ToggleXocDiaGridState($GUI_HIDE)
+        _ToggleBaccaratLeftColumn($GUI_SHOW)
+    EndIf
+EndFunc
+
+Func _UpdateXocDiaGridUI()
+	Local $sCustomSeq = StringStripWS(GUICtrlRead($g_hInput_XD_Seq), 8)
+	Local $aParsed = StringSplit($sCustomSeq, ",")
+
+	; 1. LẤY SỐ LƯỢNG HÀNG (Tối đa 10 hàng)
+	Local $iTargetRows = Number(GUICtrlRead($g_hInput_XD_MaxRows))
+	If $iTargetRows < 1 Then $iTargetRows = 1
+	If $iTargetRows > 10 Then $iTargetRows = 10 ; Khóa kịch kim ở 10 hàng
+
+	Local $fBaseBet = Number(StringRegExpReplace(GUICtrlRead($g_hInput_InitialBet), "\D", ""))
+	If $fBaseBet <= 0 Then $fBaseBet = 10000
+
+	$g_iDynamicMaxSteps = $aParsed[0]
+	If $g_iDynamicMaxSteps > 12 Then $g_iDynamicMaxSteps = 12
+
+	For $i = 1 To $g_iDynamicMaxSteps
+		Local $fMultiplier = Number($aParsed[$i])
+		$g_aXocDia_Seq[$i] = $fMultiplier * $fBaseBet
+	Next
+
+	; 2. QUÉT VÀ VẼ LÊN TỚI 10 HÀNG
+    For $r = 1 To 10
+		If $r <= $iTargetRows Then
+			; Đủ điều kiện -> HIỆN
+			GUICtrlSetState($g_aXD_Rows[$r], $GUI_SHOW)
+
+			For $c = 1 To 12
+				If $c <= $g_iDynamicMaxSteps Then
+					GUICtrlSetState($g_aXD_Cols[$c], $GUI_SHOW)
+					GUICtrlSetState($g_aXocDiaGrid[$r][$c], $GUI_SHOW)
+
+					Local $iVal = $g_aXocDia_Seq[$c]
+					Local $sText = ""
+					If $iVal >= 1000000 Then
+						$sText = Round($iVal/1000000, 1) & "M"
+					ElseIf $iVal >= 1000 Then
+						$sText = Round($iVal/1000, 0) & "k"
+					Else
+						$sText = $iVal
+					EndIf
+					GUICtrlSetData($g_aXocDiaGrid[$r][$c], $sText)
+
+					Local $iStep = $g_aTierStep[$r]
+					If $r == $g_iCurrentTier And $c == $iStep Then
+						GUICtrlSetBkColor($g_aXocDiaGrid[$r][$c], 0xFF0000)
+						GUICtrlSetColor($g_aXocDiaGrid[$r][$c], 0xFFFFFF)
+					ElseIf ($r == $g_iCurrentTier And $c < $iStep) Or ($r < $g_iCurrentTier And $c == $iStep) Then
+						GUICtrlSetBkColor($g_aXocDiaGrid[$r][$c], 0xFFFF00)
+						GUICtrlSetColor($g_aXocDiaGrid[$r][$c], 0xFF0000)
+					Else
+						GUICtrlSetBkColor($g_aXocDiaGrid[$r][$c], 0xE0E0E0)
+						GUICtrlSetColor($g_aXocDiaGrid[$r][$c], 0x555555)
+					EndIf
+				Else
+					GUICtrlSetState($g_aXocDiaGrid[$r][$c], $GUI_HIDE)
+				EndIf
+			Next
+		Else
+			; Vượt số hàng cài đặt -> ẨN
+			GUICtrlSetState($g_aXD_Rows[$r], $GUI_HIDE)
+			For $c = 1 To 12
+				GUICtrlSetState($g_aXocDiaGrid[$r][$c], $GUI_HIDE)
+			Next
+		EndIf
+    Next
+
+	For $c = 1 To 12
+		If $c > $g_iDynamicMaxSteps Then GUICtrlSetState($g_aXD_Cols[$c], $GUI_HIDE)
+	Next
+
+	Local $iSafeStep = $g_aTierStep[$g_iCurrentTier]
+	If $iSafeStep > $g_iDynamicMaxSteps Then $iSafeStep = $g_iDynamicMaxSteps
+    Local $iBetAmount = $g_aXocDia_Seq[$iSafeStep]
+    GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $g_aTierStep[$g_iCurrentTier] & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($iBetAmount) & "đ")
+EndFunc
+Func _CreateGroup_XocDia_Grid()
+    $g_hGroup_XocDiaGrid = GUICtrlCreateGroup("📊 GẤP THẾP ĐA TẦNG RIÊNG BIỆT", 10, 125, 290, 405)
+    GUICtrlSetFont(-1, 9, 800)
+    GUICtrlSetColor(-1, 0xFF0000)
+
+    Local $yOffset = 150
+    Local $xOffset = 12
+    Local $wCell = 21
+    Local $hCell = 19 ; Ép chiều cao ô thấp xuống một chút
+
+    For $c = 1 To 12
+        $g_aXD_Cols[$c] = GUICtrlCreateLabel("B" & $c, $xOffset + 28 + ($c-1)*($wCell+2), $yOffset, $wCell, 15, $SS_CENTER)
+        GUICtrlSetFont(-1, 7, 700)
+    Next
+    $yOffset += 16 ; Rút ngắn khoảng cách
+
+	; ---> TẠO SẴN 10 HÀNG CHỜ (Thay vì 5) <---
+    For $r = 1 To 10
+        $g_aXD_Rows[$r] = GUICtrlCreateLabel("H" & $r, $xOffset, $yOffset + ($r-1)*($hCell+5) + 2, 25, 20) ; Khoảng cách các hàng chỉ còn 5px
+        GUICtrlSetFont(-1, 8, 800)
+        GUICtrlSetColor(-1, 0x0000FF)
+
+        For $c = 1 To 12
+            $g_aXocDiaGrid[$r][$c] = GUICtrlCreateLabel("-", $xOffset + 26 + ($c-1)*($wCell+2), $yOffset + ($r-1)*($hCell+5), $wCell+2, $hCell, BitOR($SS_CENTER, 0x0200))
+            GUICtrlSetFont(-1, 7, 800)
+            GUICtrlSetBkColor(-1, 0xE0E0E0)
+        Next
+    Next
+
+    $yOffset += 10 * ($hCell+5) + 5
+
+	$g_hLbl_XD_Seq = GUICtrlCreateLabel("Hệ số (x Vốn):", $xOffset, $yOffset + 2, 85, 20)
+	GUICtrlSetFont(-1, 8.5, 700)
+	$g_hInput_XD_Seq = GUICtrlCreateInput("1, 2, 4, 8, 17, 35, 75", $xOffset + 85, $yOffset, 110, 22)
+	GUICtrlSetBkColor(-1, 0xFFFACD)
+
+	GUICtrlCreateLabel("Hàng:", $xOffset + 200, $yOffset + 2, 35, 20)
+	GUICtrlSetFont(-1, 8.5, 700)
+	$g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 235, $yOffset, 30, 22)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+    $yOffset += 25
+    $g_hLbl_XD_Status = GUICtrlCreateLabel("Trạng thái: Đang chờ tín hiệu...", $xOffset, $yOffset, 260, 40)
+    GUICtrlSetFont(-1, 9, 800)
+    GUICtrlSetColor(-1, 0x008000)
+
+    _ToggleXocDiaGridState($GUI_HIDE)
+EndFunc
+
+Func _ToggleXocDiaGridState($iState)
+    GUICtrlSetState($g_hGroup_XocDiaGrid, $iState)
+    GUICtrlSetState($g_hLbl_XD_Status, $iState)
+	GUICtrlSetState($g_hLbl_XD_Seq, $iState)
+	GUICtrlSetState($g_hInput_XD_Seq, $iState)
+	GUICtrlSetState($g_hInput_XD_MaxRows, $iState)
+
+    For $c = 1 To 12
+        GUICtrlSetState($g_aXD_Cols[$c], $iState)
+    Next
+    For $r = 1 To 10 ; ---> TĂNG LÊN QUÉT 10 HÀNG <---
+        GUICtrlSetState($g_aXD_Rows[$r], $iState)
+        For $c = 1 To 12
+            GUICtrlSetState($g_aXocDiaGrid[$r][$c], $iState)
+        Next
+    Next
+EndFunc
+
+Func _RunSimulator_XocDiaVIP()
+	Local $iTotalDays = Number(GUICtrlRead($g_hInput_SimString))
+	If $iTotalDays < 30 Then
+		MsgBox(48, "Lỗi Mô Phỏng", "Sếp cần test ít nhất 30 Ngày (1 Tháng) để xem độ bền.")
+		Return
+	EndIf
+
+	Local $sSelectedQLV = GUICtrlRead($g_hCombo_SimQLV)
+	Local $fBaseBet = Number(StringRegExpReplace(GUICtrlRead($g_hInput_InitialBet), "\D", ""))
+	If $fBaseBet <= 0 Then $fBaseBet = 10000
+
+	; ĐỌC CHỐT LỜI / CẮT LỖ CA
+	Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTarget), "\D", ""))
+	Local $fStopLoss = -1 * Abs(Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyStopLoss), "\D", "")))
+
+	If $fTarget <= 0 Or $fStopLoss >= 0 Then
+		MsgBox(48, "Lỗi", "Vui lòng nhập số tiền [Chốt Lời] và [Cắt Lỗ] lớn hơn 0 ở màn hình chính!")
+		Return
+	EndIf
+
+	; BIẾN THỐNG KÊ THỜI GIAN THỰC
+	Local $fTotalBankroll = 0.0
+	Local $iTotalCaWins = 0, $iTotalCaLosses = 0
+	Local $iDaysWon = 0, $iDaysLost = 0
+	Local $iTotalHandsPlayed = 0
+
+	Local $iMaxDaysWithoutLoss = 0
+	Local $iCurrentSafeStreak = 0
+
+	; CẤU HÌNH QLV
+	Local $iTargetRows = Number(GUICtrlRead($g_hInput_XD_MaxRows))
+	If $iTargetRows < 1 Then $iTargetRows = 1
+
+	; VÒNG LẶP THEO NGÀY (Mỗi ngày 3 ca)
+	For $day = 1 To $iTotalDays
+		Local $fDailyNet = 0.0
+		Local $bDayRuined = False ; Nếu 1 ca gãy, ngày đó coi như toang
+
+		For $ca = 1 To 3
+			; Khởi tạo lại QLV cho một ca mới tinh
+			Local $aSimTierStep[11] = [1,1,1,1,1,1,1,1,1,1,1]
+			Local $iSimCurrentTier = 1
+			Local $iDalUnit = 1
+			Local $iOscarUnit = 1
+			Local $fOscarCycleProfit = 0.0
+			Local $aDalTierUnit[11] = [1,1,1,1,1,1,1,1,1,1,1]
+
+			Local $fCaBalance = 0.0
+			Local $iHandsThisCa = 0
+			Local $sHist = "CCLL" ; Mồi cầu 4 tay đầu tiên
+
+			; VÒNG LẶP VÁN BÀI BÊN TRONG 1 CA (Đánh tới khi chạm Target hoặc Stoploss)
+			While 1
+				$iHandsThisCa += 1
+				$iTotalHandsPlayed += 1
+
+				; Sinh kết quả ngẫu nhiên
+				Local $sActualResult = "C"
+				If Random(0, 1, 1) = 1 Then $sActualResult = "L"
+				$sHist &= $sActualResult
+
+				Local $sTarget = StringMid($sHist, StringLen($sHist) - 3, 1) ; Công thức thứ 4
+				Local $iBetAmount = 0
+				Local $bIsBreak = False
+
+				; TÍNH TIỀN THEO QLV
+				Switch StringLeft($sSelectedQLV, 1)
+					Case "1" ; Gấp thếp Đa tầng
+						Local $iStep = $aSimTierStep[$iSimCurrentTier]
+						If $iStep > $g_iDynamicMaxSteps Then
+							$bIsBreak = True
+						Else
+							$iBetAmount = $g_aXocDia_Seq[$iStep]
+						EndIf
+					Case "2" ; D'Alembert
+						$iBetAmount = $iDalUnit * $fBaseBet
+					Case "3" ; Oscar
+						$iBetAmount = $iOscarUnit * $fBaseBet
+					Case "4" ; Siêu Lai Tạo
+						Local $iDalStep = $aDalTierUnit[$iSimCurrentTier]
+						If $iDalStep > $g_iDynamicMaxSteps Then
+							$bIsBreak = True
+						Else
+							$iBetAmount = $iDalStep * $fBaseBet
+						EndIf
+				EndSwitch
+
+				; NẾU GÃY CẤU HÌNH -> CHÁY CA
+				If $bIsBreak Then
+					$iTotalCaLosses += 1
+					$fCaBalance = $fStopLoss ; Áp mức cắt lỗ chuẩn
+					ExitLoop ; Kết thúc ca này
+				EndIf
+
+If $sTarget == $sActualResult Then
+					$fCaBalance += ($iBetAmount * 0.95) ; Phế chuẩn 0.95
+					Switch StringLeft($sSelectedQLV, 1)
+						Case "1"
+							; Gấp thếp Đa tầng: CHỈ xóa nợ hàng vừa thắng, giữ nợ treo các hàng dưới
+							$aSimTierStep[$iSimCurrentTier] = 1
+							$iSimCurrentTier = 1
+						Case "2"
+							$iDalUnit -= 1
+							If $iDalUnit < 1 Then $iDalUnit = 1
+						Case "3"
+							$fOscarCycleProfit += ($iBetAmount * 0.95)
+							If $fOscarCycleProfit > 0 Then
+								$iOscarUnit = 1
+								$fOscarCycleProfit = 0
+							Else
+								$iOscarUnit += 1
+							EndIf
+						Case "4"
+							; Siêu Lai Tạo: Cùng chung logic giữ nợ treo như Case 1
+							$aDalTierUnit[$iSimCurrentTier] -= 1
+							If $aDalTierUnit[$iSimCurrentTier] < 1 Then $aDalTierUnit[$iSimCurrentTier] = 1
+							$iSimCurrentTier = 1
+					EndSwitch
+					Else
+					$fCaBalance -= $iBetAmount
+					Switch StringLeft($sSelectedQLV, 1)
+						Case "1"
+							$aSimTierStep[$iSimCurrentTier] += 1
+							If $iSimCurrentTier < $iTargetRows Then $iSimCurrentTier += 1
+						Case "2"
+							$iDalUnit += 1
+						Case "3"
+							$fOscarCycleProfit -= $iBetAmount
+						Case "4"
+							$aDalTierUnit[$iSimCurrentTier] += 1
+							If $iSimCurrentTier < $iTargetRows Then $iSimCurrentTier += 1
+					EndSwitch
+				EndIf
+
+				; Chống lặp vô hạn (An toàn phần mềm)
+				If $iHandsThisCa > 5000 Then ExitLoop
+
+				; KIỂM TRA CHẠM MỐC CA
+				If $fCaBalance >= $fTarget Then
+					$iTotalCaWins += 1
+					ExitLoop ; Ca thành công, thoát vòng lặp
+				ElseIf $fCaBalance <= $fStopLoss Then
+					$iTotalCaLosses += 1
+					ExitLoop ; Ca thất bại, thoát vòng lặp
+				EndIf
+			WEnd
+
+			$fDailyNet += $fCaBalance
+			If $fCaBalance <= 0 Then $bDayRuined = True
+		Next ; Kết thúc 1 ngày (3 ca)
+
+		$fTotalBankroll += $fDailyNet
+
+		; Đánh giá kết quả Ngày
+		If $bDayRuined Then
+			$iDaysLost += 1
+			If $iCurrentSafeStreak > $iMaxDaysWithoutLoss Then $iMaxDaysWithoutLoss = $iCurrentSafeStreak
+			$iCurrentSafeStreak = 0 ; Bị nổ, reset bộ đếm ngày an toàn
+		Else
+			$iDaysWon += 1
+			$iCurrentSafeStreak += 1
+		EndIf
+	Next
+	If $iCurrentSafeStreak > $iMaxDaysWithoutLoss Then $iMaxDaysWithoutLoss = $iCurrentSafeStreak
+
+	; QUY ĐỔI BÁO CÁO
+	Local $fDaysPerBlowup = 9999
+	If $iDaysLost > 0 Then $fDaysPerBlowup = Round($iTotalDays / $iDaysLost, 1)
+
+	Local $fAvgLoiNhuanThang = Round(($fTotalBankroll / $iTotalDays) * 30, 0)
+
+	Local $sReport = "=== MÔ PHỎNG THỰC CHIẾN 3 CA/NGÀY ===" & @CRLF & @CRLF
+	$sReport &= "📅 Thời gian test: " & _FormatNumber($iTotalDays) & " Ngày (~ " & Round($iTotalDays/30, 1) & " Tháng)" & @CRLF
+	$sReport &= "🎯 Rỉa: " & _FormatNumber($fTarget) & "đ/ca  |  🛑 Cắt lỗ: " & _FormatNumber($fStopLoss) & "đ/ca" & @CRLF
+	$sReport &= "------------------------------------------------" & @CRLF
+	$sReport &= "📊 TỔNG KẾT QUẢ THEO NGÀY (Mỗi ngày đánh đủ 3 ca):" & @CRLF
+	$sReport &= "   ✅ Số Ngày Lãi Trọn Vẹn: " & _FormatNumber($iDaysWon) & " Ngày" & @CRLF
+	$sReport &= "   ❌ Số Ngày Chạm Cắt Lỗ (Gãy): " & _FormatNumber($iDaysLost) & " Ngày" & @CRLF
+	$sReport &= "------------------------------------------------" & @CRLF
+	$sReport &= "⏱️ KỶ LỤC SINH TỒN:" & @CRLF
+
+	If $iDaysLost > 0 Then
+		$sReport &= "   -> Chuỗi ngày an toàn dài nhất: Sống sót " & $iMaxDaysWithoutLoss & " NGÀY liên tiếp không nổ." & @CRLF
+		$sReport &= "   -> Trung bình nhịp gãy: Khoảng " & $fDaysPerBlowup & " NGÀY SẼ NỔ 1 LẦN." & @CRLF
+	Else
+		$sReport &= "   -> KẾT LUẬN: BẤT TỬ TUYỆT ĐỐI! Toàn bộ " & $iTotalDays & " ngày không gãy lần nào." & @CRLF
+	EndIf
+
+	$sReport &= "------------------------------------------------" & @CRLF
+	$sReport &= "💰 TỔNG LỢI NHUẬN (" & _FormatNumber($iTotalDays) & " NGÀY): " & _FormatNumber($fTotalBankroll) & "đ" & @CRLF
+	$sReport &= "💵 ƯỚC TÍNH THU NHẬP 1 THÁNG: " & _FormatNumber($fAvgLoiNhuanThang) & "đ / Tháng"
+
+	MsgBox(64, "Báo Cáo Thực Chiến Cơm Gạo", $sReport)
+EndFunc
+Func _CheckForUpdates()
+	If @Compiled = 0 Then Return
+	Local $bRead = InetRead($g_sGithubVersionURL, 1)
+	If @error Then Return
+	Local $sOnlineVersion = StringStripWS(BinaryToString($bRead, 4), 8)
+	If $sOnlineVersion <> "" And Number($sOnlineVersion) > Number($g_sVersion) Then
+		_UpdateStatus("🚀 Có bản mới v" & $sOnlineVersion & "! Hệ thống đang tự động tải...")
+		_SilentAutoUpdate($g_sDownloadURL)
+	EndIf
 EndFunc
