@@ -38,7 +38,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool_AIO"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "5.0" ; Phiên bản hiện tại
+Global Const $g_sVersion = "5.1" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -5816,40 +5816,54 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
     _UpdateXocDiaGridUI()
 EndFunc
 Func _SwitchLimit_VIP($sTargetLimit)
-    ; 1. NẾU ĐANG ĐÚNG MỐC RỒI -> BỎ QUA LUÔN (Chống kẹt nút)
+    ; 1. NẾU ĐANG ĐÚNG MỐC RỒI -> BỎ QUA LUÔN (Chống kẹt nút, tiết kiệm thời gian)
     If $g_sCurrentLimitState == $sTargetLimit Then Return
 
     Local $hWnd = $g_hTargetGameWin
     If $hWnd = 0 Or Not WinExists($hWnd) Then Return
 
-    _UpdateStatus("⚙️ Bẻ Hạn Mức nhanh sang: [" & $sTargetLimit & "]...")
+    _UpdateStatus("⚙️ Đang bẻ Hạn Mức sang: [" & $sTargetLimit & "] (Chế độ click vật lý chống trượt)...")
 
-    ; 2. Click Mở bảng Hạn Mức (Tọa độ chính xác tuyệt đối, không Random)
-    _SingleClick($hWnd, $g_iLimitBtnX, $g_iLimitBtnY, 0)
+    ; Ép game nổi lên trên cùng để chuột thật không bị vướng
+    WinActivate($hWnd)
     Sleep(200)
+
+    ; 2. Click Mở bảng Hạn Mức (Dùng chuột thật thay vì JS)
+    MouseMove($g_iLimitBtnX, $g_iLimitBtnY, 2) ; Rê chuột vào vị trí (Tốc độ 2 = Nhanh nhưng không giật)
+    Sleep(100)
+    MouseClick("left", $g_iLimitBtnX, $g_iLimitBtnY, 1, 0)
+
+    ; ĐIỂM MẤU CHỐT: Chờ 600ms để hiệu ứng UI của game xổ bảng hạn mức ra hoàn toàn
+    Sleep(600)
 
     ; 3. Click chọn mốc 10-500 hoặc 20-50K
     If $sTargetLimit == "10-500" Then
-        _SingleClick($hWnd, $g_iLimit10_500X, $g_iLimit10_500Y, 0)
+        MouseMove($g_iLimit10_500X, $g_iLimit10_500Y, 2)
+        Sleep(100)
+        MouseClick("left", $g_iLimit10_500X, $g_iLimit10_500Y, 1, 0)
     Else
-        _SingleClick($hWnd, $g_iLimit20_50KX, $g_iLimit20_50KY, 0)
+        MouseMove($g_iLimit20_50KX, $g_iLimit20_50KY, 2)
+        Sleep(100)
+        MouseClick("left", $g_iLimit20_50KX, $g_iLimit20_50KY, 1, 0)
     EndIf
-    Sleep(200)
 
-    ; 4. Bấm nút Xác Nhận Vàng
+    ; Nghỉ 400ms chờ UI ghi nhận click chọn mốc
+    Sleep(400)
+
+    ; 4. Bấm nút Xác Nhận Vàng (Bấm dứt khoát)
     If $g_iLimitConfirmX > 0 And $g_iLimitConfirmY > 0 Then
-        MouseMove($g_iLimitConfirmX, $g_iLimitConfirmY, 0)
-        Sleep(80)
+        MouseMove($g_iLimitConfirmX, $g_iLimitConfirmY, 2)
+        Sleep(100)
         MouseDown("left")
-        Sleep(50) ; Bấm dứt khoát rồi nhả
+        Sleep(150) ; Giữ phím chuột 150ms để game Sexy nhận diện là "Click" chứ không phải "Vuốt"
         MouseUp("left")
     EndIf
 
-    ; 5. CHỐT CHẶN SIÊU TỐC: Chỉ chờ 250ms để bảng thu dọn
-    Sleep(250)
+    ; 5. CHỐT CHẶN: Chờ 500ms để bảng hạn mức đóng lại hoàn toàn trước khi vào tiền cược
+    Sleep(500)
 
     $g_sCurrentLimitState = $sTargetLimit
-    _UpdateStatus("✅ Đã đổi limit cực nhanh và chính xác!")
+    _UpdateStatus("✅ Đã bẻ xong hạn mức! Chuẩn bị chờ đèn xanh thả chip.")
 EndFunc
 Func _ToggleGameModeUI()
     If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
