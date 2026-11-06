@@ -38,7 +38,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool_AIO"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.8" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.9" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -1318,14 +1318,10 @@ Func _ToggleConfigControlsState($bEnable)
 	For $hControl In $g_aConfigControls
 		GUICtrlSetState($hControl, $iState)
 	Next
-	If $bEnable Then
-		GUICtrlSetState($g_hButton_Unlock, $GUI_HIDE)
-		GUICtrlSetState($g_hButton_Lock, $GUI_SHOW)
-	Else
-		GUICtrlSetState($g_hButton_Unlock, $GUI_SHOW)
-		GUICtrlSetState($g_hButton_Lock, $GUI_HIDE)
-	EndIf
-EndFunc   ;==>_ToggleConfigControlsState
+
+	; Đã xóa đoạn lệnh Ẩn/Hiện nút cũ ở đây vì bây giờ chúng ta dùng chung 1 nút duy nhất.
+	; Nút sẽ luôn hiện thị và tự đổi chữ/đổi màu.
+EndFunc
 
 Func _ToggleScanHotkey()
 	If GUICtrlRead($g_hCheckbox_ToggleScan) = $GUI_CHECKED Then
@@ -5721,18 +5717,59 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
     If $iTargetRows < 1 Then $iTargetRows = 1
     If $iTargetRows > 10 Then $iTargetRows = 10
 
-    ; 1. CỘNG TRỪ TIỀN CHU KỲ (Để tính chốt vòng xóa nợ)
+    ; 1. TÍNH TIỀN LÃI CHU KỲ VÒNG
     If $bIsWin Then
-        $g_fXD_CycleProfit += ($g_fCurrentBet * 0.95) ; Tính phế 0.95
-        _UpdateStatus("✅ [KẾT QUẢ] Húp [" & $sActualResult & "]! -> Trả xong nợ Hàng " & $g_iCurrentTier & ".")
-        $g_aTierStep[$g_iCurrentTier] = 1 ; Trả xong nợ thì reset bước của hàng đó về 1
+        $g_fXD_CycleProfit += ($g_fCurrentBet * 0.95) ; Húp tính phế
     Else
         $g_fXD_CycleProfit -= $g_fCurrentBet
-        _UpdateStatus("❌ [KẾT QUẢ] Gãy [" & $sBetOn & "]. -> Treo nợ Hàng " & $g_iCurrentTier & ", tăng bước.")
-        $g_aTierStep[$g_iCurrentTier] += 1 ; Thua thì tăng bước nợ
     EndIf
 
-    ; 2. CHỐT LỜI CHU KỲ (TỰ XÓA ĐỒNG LOẠT NỢ)
+    ; 2. ĐIỀU HƯỚNG HÀNG & BƯỚC CHUẨN 100%
+    If $bIsWin Then
+        ; --- KHI THẮNG: LÀM SẠCH NỢ VÀ VỀ HÀNG 1 ---
+        $g_aTierStep[$g_iCurrentTier] = 1 ; Xóa nợ cho hàng vừa ăn
+        $g_iCurrentTier = 1               ; Ép nhảy về Hàng 1
+        _UpdateStatus("✅ [KẾT QUẢ] Húp! -> Xóa nợ hàng vừa đánh. Trở về Hàng 1, Bước 1.")
+    Else
+        ; --- KHI THUA: TĂNG NỢ VÀ PHÂN NHÁNH LOGIC ---
+        $g_aTierStep[$g_iCurrentTier] += 1 ; Cộng thêm 1 bước nợ cho hàng vừa gãy
+
+        If GUICtrlRead($g_hCheckbox_XD_LowDebtPriority) == $GUI_CHECKED Then
+            ; [NHÁNH 1] BẬT CHECKBOX: TÌM HÀNG CÓ NỢ THẤP NHẤT
+            Local $iMinStep = 9999
+            Local $iBestTier = 1
+            For $i = 1 To $iTargetRows
+                If $g_aTierStep[$i] < $iMinStep Then
+                    $iMinStep = $g_aTierStep[$i]
+                    $iBestTier = $i
+                EndIf
+            Next
+            $g_iCurrentTier = $iBestTier
+            _UpdateStatus("❌ [KẾT QUẢ] Gãy! -> [Tìm Nợ Thấp] Chuyển sang Hàng " & $g_iCurrentTier & " (Đang nợ Bước " & $g_aTierStep[$g_iCurrentTier] & ").")
+        Else
+            ; [NHÁNH 2] TẮT CHECKBOX: ĐÁNH TỊNH TIẾN VÀ GẤP THẾP HÀNG CUỐI
+            If $g_iCurrentTier < $iTargetRows Then
+                ; Vẫn còn hàng để lùi -> Nhảy xuống hàng dưới
+                $g_iCurrentTier += 1
+                _UpdateStatus("❌ [KẾT QUẢ] Gãy! -> [Tuần Tự] Lùi xuống Hàng " & $g_iCurrentTier & " (Đang nợ Bước " & $g_aTierStep[$g_iCurrentTier] & ").")
+            Else
+                ; Đã chạm đáy hàng cuối -> Không nhảy hàng nữa, đứng im gấp thếp
+                _UpdateStatus("❌ [KẾT QUẢ] Gãy! -> [Chạm Đáy] Hết hàng lùi. Ở lại Hàng " & $iTargetRows & " gấp thếp lên Bước " & $g_aTierStep[$g_iCurrentTier] & ".")
+            EndIf
+        EndIf
+    EndIf
+
+    ; 3. KIỂM TRA CHẠM ĐỈNH GÃY BƯỚC (CẮT LỖ BẮT BUỘC)
+    If $g_aTierStep[$g_iCurrentTier] > $g_iDynamicMaxSteps Then
+        _UpdateStatus("⚠️ [CẮT LỖ TOÀN CỤC] Hàng " & $g_iCurrentTier & " đã gãy quá giới hạn " & $g_iDynamicMaxSteps & " bước! Reset toàn bộ về H1 B1.")
+        For $i = 1 To 10
+            $g_aTierStep[$i] = 1
+        Next
+        $g_iCurrentTier = 1
+        $g_fXD_CycleProfit = 0 ; Bắt đầu lại vòng mới
+    EndIf
+
+    ; 4. KIỂM TRA CHỐT LỜI CHU KỲ (TỰ ĐỘNG XÓA ĐỒNG LOẠT NỢ TRÊN BẢNG)
     Local $bAllClean = False
     If GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED Then
         Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_XD_TargetProfit), "\D", ""))
@@ -5741,12 +5778,13 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
             For $i = 1 To 10
                 $g_aTierStep[$i] = 1
             Next
-            $g_fXD_CycleProfit = 0 ; Reset chu kỳ tiền
+            $g_iCurrentTier = 1
+            $g_fXD_CycleProfit = 0
             $bAllClean = True
         EndIf
     EndIf
 
-    ; Bảo trì: Kiểm tra xem mọi hàng đã về Bước 1 hết chưa (nếu chưa chốt lời vòng)
+    ; 5. BẢO TRÌ BỘ NHỚ LÃI CHU KỲ (Khi toàn bộ đã về mức 1 an toàn)
     If Not $bAllClean Then
         $bAllClean = True
         For $i = 1 To $iTargetRows
@@ -5758,32 +5796,7 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
         If $bAllClean Then $g_fXD_CycleProfit = 0
     EndIf
 
-    ; 3. LOGIC MỚI: TÌM HÀNG CÓ NỢ (BƯỚC) NHỎ NHẤT ĐỂ ĐÁNH VÁN SAU
-    ; Nếu vừa chốt lời vòng (tất cả về 1), nó sẽ tự động chọn Hàng 1
-    Local $iMinStep = 9999
-    Local $iBestTier = 1
-
-    ; Quét tìm hàng có nợ (Bước) thấp nhất
-    For $i = 1 To $iTargetRows
-        If $g_aTierStep[$i] < $iMinStep Then
-            $iMinStep = $g_aTierStep[$i]
-            $iBestTier = $i
-        EndIf
-    Next
-
-    ; Nếu hàng được chọn đã vượt quá số bước cho phép (chạm nóc kịch kim)
-    ; Thì reset toàn bộ để cắt lỗ và bắt đầu lại từ Hàng 1
-    If $iMinStep > $g_iDynamicMaxSteps Then
-         _UpdateStatus("⚠️ [CẮT LỖ TOÀN CỤC] Hàng nợ thấp nhất cũng đã vượt quá " & $g_iDynamicMaxSteps & " bước! Reset toàn bộ hệ thống.")
-         For $i = 1 To 10
-             $g_aTierStep[$i] = 1
-         Next
-         $g_iCurrentTier = 1
-    Else
-         $g_iCurrentTier = $iBestTier
-         _UpdateStatus("🎯 [PHÂN BỔ] Lệnh tiếp theo: Hàng " & $g_iCurrentTier & " (Đang nợ thấp nhất: Bước " & $iMinStep & ").")
-    EndIf
-
+    ; Cập nhật màu sắc lên bảng LED
     _UpdateXocDiaGridUI()
 EndFunc
 Func _SwitchLimit_VIP($sTargetLimit)
