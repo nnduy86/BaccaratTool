@@ -38,7 +38,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool_AIO"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.9" ; Phiên bản hiện tại
+Global Const $g_sVersion = "5.0" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -368,11 +368,13 @@ Global $g_fServerVolumeToday = 0 ; Biến lưu Volume thực tế từ máy ch�
 _Main()
 
 Func _Main()
+    ; ---> BỔ SUNG LỆNH NÀY ĐẦU TIÊN: Đảm bảo khi tắt tool sẽ gọi hàm dọn rác RAM
+    OnAutoItExitRegister("_ExitCleanup")
+
     If _Singleton("ToolCasino_Lock_Main", 1) = 0 Then
         MsgBox(48, "Thông báo", "Tool đang được mở rồi!")
         Exit
     EndIf
-
     Sleep(500)
     _CheckForUpdates()
 
@@ -712,46 +714,54 @@ Local $sNewName = InputBox("Cấp Phát Cấu Hình VIP", "Nhập thông tin the
 				_DeleteSelectedFormula()
 			Case $g_hListView_VIP
 Case $g_hButton_Start
-                If $g_bIsRunning Then
-                    ; NẾU ĐANG CHẠY MÀ BẤM THÌ DỪNG LẠI
-                    _StopProcess()
-                    GUICtrlSetData($g_hButton_Start, "BẮT ĐẦU QUÉT")
-                    GUICtrlSetBkColor($g_hButton_Start, 0x33CC33) ; Trả về màu Xanh Lá
-                Else
-                    ; ==============================================================
-                    ; QUY TRÌNH 1 CHẠM: MỞ CHROME -> RÌNH POPUP -> CẮM AUTO
-                    ; ==============================================================
+				If $g_bIsRunning Then
+					; NẾU ĐANG CHẠY MÀ BẤM THÌ DỪNG LẠI
+					_StopProcess()
+					GUICtrlSetData($g_hButton_Start, "BẮT ĐẦU QUÉT")
+					GUICtrlSetBkColor($g_hButton_Start, 0x33CC33) ; Trả về màu Xanh Lá
 
-                    ; 1. Đổi giao diện nút bấm thành DỪNG để sếp có thể hủy ngang bất kỳ lúc nào
-                    $g_bIsRunning = True
-                    GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-                    GUICtrlSetData($g_hButton_Start, "DỪNG TOOL")
-                    GUICtrlSetBkColor($g_hButton_Start, 0xFF4141) ; Đổi sang màu Đỏ
+					; Khôi phục màn hình tool nếu nó đang ẩn
+					GUISetState(@SW_RESTORE, $g_hGUI)
+				Else
+					; ==============================================================
+					; QUY TRÌNH 1 CHẠM: MỞ CHROME -> RÌNH POPUP -> CẮM AUTO
+					; ==============================================================
 
-                    ; 2. Gọi hàm mở Chrome
-                    Local $iInitChrome = _LaunchChrome_WebDriver()
+					; 1. Đổi giao diện nút bấm thành DỪNG
+					$g_bIsRunning = True
+					GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
+					GUICtrlSetData($g_hButton_Start, "DỪNG TOOL")
+					GUICtrlSetBkColor($g_hButton_Start, 0xFF4141) ; Đổi sang màu Đỏ
 
-                    If $iInitChrome == 1 Then
-                        ; 3. Chrome mở xong, lập tức chuyển sang trạng thái "Treo Ngầm Rình Popup"
-                        If _AutoCatchPopup_And_Maximize() Then
-                            ; Nếu hàm trên trả về True (Chộp được Popup) -> Chuyển thẳng sang hàm Quét Kết Quả
-                            _UpdateStatus("🚀 [CHỐT TỌA ĐỘ] Đã khóa cứng vào bàn Game. Bắt đầu nã đạn!")
-                            _StartProcess()
-                        Else
-                            ; Nếu hàm trả về False (Do sếp bấm DỪNG lúc đang chờ)
-                            _UpdateStatus("🛑 Đã hủy quá trình chờ Game.")
-                            _StopProcess()
-                        EndIf
-                    Else
-                        ; Lỗi không mở được Chrome (Lỗi WebDriver)
-                        _UpdateStatus("🛑 Lỗi: Không thể khởi động Chrome WebDriver!")
-                        _StopProcess()
-                    EndIf
-                EndIf
-			Case $g_hButton_Stop
-				_SyncVolumeToServer()
-				_StopProcess()
-Case $g_hButton_Unlock
+					; ---> HẠ TOOL XUỐNG TASKBAR LẬP TỨC <---
+					GUISetState(@SW_MINIMIZE, $g_hGUI)
+					_UpdateStatus("🔽 Đã hạ Tool xuống Taskbar để sếp tiện thao tác trên Game...")
+
+					; 2. Gọi hàm mở Chrome
+					Local $iInitChrome = _LaunchChrome_WebDriver()
+
+					If $iInitChrome == 1 Then
+						; 3. Chrome mở xong, lập tức chuyển sang trạng thái "Treo Ngầm Rình Popup"
+						If _AutoCatchPopup_And_Maximize() Then
+							; Nếu hàm trên trả về True (Chộp được Popup) -> Chuyển thẳng sang hàm Quét Kết Quả
+							_UpdateStatus("🚀 [CHỐT TỌA ĐỘ] Đã khóa cứng vào bàn Game. Bắt đầu nã đạn!")
+							_StartProcess()
+						Else
+							; Nếu hàm trả về False (Do sếp bấm DỪNG lúc đang chờ)
+							_UpdateStatus("🛑 Đã hủy quá trình chờ Game.")
+							_StopProcess()
+							; Bấm hủy thì móc tool lên lại
+							GUISetState(@SW_RESTORE, $g_hGUI)
+						EndIf
+					Else
+						; Lỗi không mở được Chrome (Lỗi WebDriver)
+						_UpdateStatus("🛑 Lỗi: Không thể khởi động Chrome WebDriver!")
+						_StopProcess()
+						; Bị lỗi thì móc tool lên lại để xem thông báo
+						GUISetState(@SW_RESTORE, $g_hGUI)
+					EndIf
+				EndIf
+			Case $g_hButton_Unlock
                 Local $sCurrentText = GUICtrlRead($g_hButton_Unlock)
 
                 ; 1. NẾU ĐANG KHÓA -> YÊU CẦU MẬT KHẨU ĐỂ MỞ CHO ADMIN
@@ -784,7 +794,7 @@ Case $g_hButton_Unlock
                     GUICtrlSetBkColor($g_hButton_Unlock, 0xFF4141)
 
                     ; Báo cáo thành công cho Admin yên tâm bàn giao
-                    MsgBox(64, "Đã Khóa", "Đã khóa Phòng Kỹ Thuật an toàn." & @CRLF & "Tool hiện đang ở chế độ dành cho Khách Hàng!")
+                    ;MsgBox(64, "Đã Khóa", "Đã khóa Phòng Kỹ Thuật an toàn." & @CRLF & "Tool hiện đang ở chế độ dành cho Khách Hàng!")
                 EndIf
 			Case $g_hButton_Lock
 				$g_bIsDevMode = False
@@ -1132,11 +1142,11 @@ Func _CreateGroup_UserConfig_Main()
 	$g_hRadio_ClickMode_Control_Main = GUICtrlCreateRadio("Nhanh", -999, -999, 10, 10)
 	$g_hRadio_ClickMode_Mouse_Main = GUICtrlCreateRadio("Chuột", -999, -999, 10, 10)
 
-	$y += 32
+$y += 32
 	Global $g_hCheckbox_PinTool = GUICtrlCreateCheckbox("📌 Ghim Tool luôn nổi (Chống đè)", $x + 20, $y, 250, 20)
 	GUICtrlSetFont(-1, 9, 800)
 	GUICtrlSetColor(-1, 0xFF00FF)
-	GUICtrlSetState(-1, $GUI_CHECKED)
+	GUICtrlSetState(-1, $GUI_UNCHECKED) ; <--- SỬA TẠI ĐÂY: Đổi $GUI_CHECKED thành $GUI_UNCHECKED
 
 	$y += 32
 	$g_hButton_Start = GUICtrlCreateButton("ĐĂNG NHẬP", $x + 30, $y, 210, 60)
@@ -2692,67 +2702,65 @@ EndFunc   ;==>_Core_SaveStat
 Func _CheckProfitLossTargets()
 	Local $bHitTarget = False
 	Local $sReason = ""
-	Local $fTolerance = 0.95 ; Dung sai 95% chốt sớm
 
-	; Chỉ kiểm tra nếu tích bật Mục Tiêu Tổng
+	; Chỉ kiểm tra nếu tích bật Mục Tiêu
 	If GUICtrlRead($g_hCheckbox_DailyShield) == $GUI_CHECKED Then
-		Local $sFileProfit = @ScriptDir & "\profit_history.ini"
-		Local $sToday = _GetGamingDate()
 
-		; CHỈ LẤY LỢI NHUẬN THUẦN TÚY (KHÔNG CỘNG VOLUME)
-		Local $fNetDay = Number(IniRead($sFileProfit, "Daily", $sToday, "0"))
+		; SỬA LỖI 1: Lấy Lãi/Lỗ của PHIÊN HIỆN TẠI (Thay vì lấy Tổng Lãi Ngày gây lỗi khóa chéo)
+		Local $fCurrentProfit = $g_fTotalProfit
 
-		; Cập nhật Đỉnh Lãi Ngày liên tục
-		If $fNetDay > $g_fPeakNetDay Then $g_fPeakNetDay = $fNetDay
+		; Cập nhật Đỉnh Lãi Phiên liên tục (Dùng cho Kéo Đuôi)
+		If $fCurrentProfit > $g_fPeakProfit Then $g_fPeakProfit = $fCurrentProfit
 
-		; In ra màn hình cho sếp xem
-		Local $sColorNet = ($fNetDay >= 0) ? 0x006400 : 0xFF0000
-		GUICtrlSetData($g_hLabel_NetDay, "LỢI NHUẬN TỔNG: " & _FormatNumber($fNetDay) & " đ")
-		GUICtrlSetColor($g_hLabel_NetDay, $sColorNet)
+		Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTarget), "\D", ""))
+		Local $fTrailing = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTrailing), "\D", ""))
+		Local $fStopLoss = -1 * Abs(Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyStopLoss), "\D", "")))
 
-		Local $fDailyTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTarget), "\D", ""))
-		Local $fDailyTrailing = Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyTrailing), "\D", ""))
-		Local $fDailyStopLoss = -1 * Abs(Number(StringRegExpReplace(GUICtrlRead($g_hInput_DailyStopLoss), "\D", "")))
-
-		; A. Kiểm tra Cắt Lỗ
-		If $fDailyStopLoss < 0 And $fNetDay <= $fDailyStopLoss Then
+		; A. Kiểm tra Cắt Lỗ (Chạm là cắt ngay)
+		If $fStopLoss < 0 And $fCurrentProfit <= $fStopLoss Then
 			$bHitTarget = True
-			$sReason = "CHẠM MỨC CẮT LỖ (Âm " & _FormatNumber($fNetDay) & ")"
+			$sReason = "CHẠM MỨC CẮT LỖ PHIÊN (Âm " & _FormatNumber($fCurrentProfit) & ")"
 		EndIf
 
-		; B. Kiểm tra Chốt Lời / Kéo Đuôi
-		If $fDailyTarget > 0 Then
-			; Khóa Lãi An Toàn (Đạt 80% thì không bao giờ để tụt dưới 20%)
-			If $g_fPeakNetDay >= ($fDailyTarget * 0.8) And $fNetDay <= ($fDailyTarget * 0.2) Then
-				$bHitTarget = True
-				$sReason = "BẢO TOÀN LÃI (Đỉnh: " & _FormatNumber($g_fPeakNetDay) & ")"
-			EndIf
+		; B. Kiểm tra Chốt Lời
+		If $fTarget > 0 Then
+			; TRƯỜNG HỢP 1: CÓ KÉO ĐUÔI (Trailing > 0) -> Gồng lãi
+			If $fTrailing > 0 Then
+				If $fCurrentProfit >= $fTarget Or $g_bIsTrailingMode Then
+					$g_bIsTrailingMode = True
+					Local $fDynTrail = $fTrailing
 
-			If $fNetDay >= ($fDailyTarget * $fTolerance) Or $g_bIsDailyTrailing Then
-				$g_bIsDailyTrailing = True
-				Local $fDynTrailDay = $fDailyTrailing
-				If $g_fPeakNetDay >= ($fDailyTarget * 2) Then $fDynTrailDay = $fDailyTrailing / 2 ; Bóp đuôi nếu ăn x2
+					; Bóp đuôi nếu ăn x2 mục tiêu
+					If $g_fPeakProfit >= ($fTarget * 2) Then $fDynTrail = $fTrailing / 2
 
-				If $fNetDay <= ($g_fPeakNetDay - $fDynTrailDay) Then
+					; Chốt khi lợi nhuận tụt từ đỉnh xuống bằng đúng khoảng Kéo Đuôi
+					If $fCurrentProfit <= ($g_fPeakProfit - $fDynTrail) Then
+						$bHitTarget = True
+						$sReason = "CHỐT LÃI KÉO ĐUÔI (Đỉnh: " & _FormatNumber($g_fPeakProfit) & " đ, Tụt mất: " & _FormatNumber($fDynTrail) & " đ)"
+					EndIf
+				EndIf
+
+			; SỬA LỖI 2 - TRƯỜNG HỢP 2: KHÔNG KÉO ĐUÔI -> CHẠM MỐC LÀ CHỐT CỨNG NGAY LẬP TỨC
+			Else
+				If $fCurrentProfit >= $fTarget Then
 					$bHitTarget = True
-					$sReason = "CHỐT LÃI (Đỉnh: " & _FormatNumber($g_fPeakNetDay) & " đ, Tụt mất: " & _FormatNumber($fDynTrailDay) & " đ)"
+					$sReason = "ĐẠT MỤC TIÊU CHỐT LÃI PHIÊN (+" & _FormatNumber($fCurrentProfit) & " đ)"
 				EndIf
 			EndIf
 		EndIf
 
-; Xử lý khi chạm mốc
+		; Xử lý hành động khi chạm mốc (Dừng / Nghỉ)
 		If $bHitTarget Then
 			_StopAndSaveSession()
 
 			If GUICtrlRead($g_hRadio_Action_Stop) == $GUI_CHECKED Then
-				; ---> GHI CỜ KHÓA CHẾT VÀO FILE INI THEO NGÀY HIỆN TẠI <---
+				; Ghi cờ khóa hệ thống
 				IniWrite($g_sIniPath, "SessionData", "LockedDate", _GetGamingDate())
-
-				_UpdateStatus("🛑 " & $sReason & " -> DỪNG VÀ KHÓA TOOL ĐẾN 7H SÁNG MAI!")
+				_UpdateStatus("🛑 " & $sReason & " -> DỪNG TOOL THEO YÊU CẦU!")
 				_StopProcess()
 				Return True
 			ElseIf GUICtrlRead($g_hRadio_Action_PauseMin) == $GUI_CHECKED Then
-			Local $iMins = Number(GUICtrlRead($g_hInput_Action_PauseMin))
+				Local $iMins = Number(GUICtrlRead($g_hInput_Action_PauseMin))
 				$g_iTargetPauseEndTime = TimerInit()
 				$g_iTargetPauseDuration = $iMins * 60000
 				_UpdateStatus("⏳ " & $sReason & " -> Nghỉ " & $iMins & " phút.")
@@ -2765,6 +2773,14 @@ Func _CheckProfitLossTargets()
 			EndIf
 		EndIf
 	EndIf
+
+	; Đảm bảo hiển thị nhãn "Tổng Lãi Hôm Nay" trên UI luôn được cập nhật ngầm
+	Local $sFileProfit = @ScriptDir & "\profit_history.ini"
+	Local $fNetDay = Number(IniRead($sFileProfit, "Daily", _GetGamingDate(), "0"))
+	Local $sColorNet = ($fNetDay >= 0) ? 0x006400 : 0xFF0000
+	GUICtrlSetData($g_hLabel_NetDay, "LỢI NHUẬN TỔNG: " & _FormatNumber($fNetDay) & " đ")
+	GUICtrlSetColor($g_hLabel_NetDay, $sColorNet)
+
 	Return False
 EndFunc
 ; Hàm hỗ trợ để rút gọn code
@@ -6173,4 +6189,17 @@ Func _AutoCatchPopup_And_Maximize()
     WEnd
 
     Return False ; Trả về False nếu sếp bấm Dừng Tool giữa chừng
+EndFunc
+; =====================================================================
+; HÀM DỌN RÁC RAM TRƯỚC KHI TẮT TOOL HOÀN TOÀN
+; =====================================================================
+Func _ExitCleanup()
+	; 1. Tắt kết nối WebDriver
+	If $g_sSession <> "" Then
+		_WD_DeleteSession($g_sSession)
+		_WD_Shutdown()
+	EndIf
+
+	; 2. Giết sạch sẽ các tiến trình chạy ngầm còn sót lại trong Task Manager
+	ProcessClose("chromedriver.exe")
 EndFunc
