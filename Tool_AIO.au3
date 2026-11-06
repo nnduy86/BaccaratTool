@@ -16,6 +16,12 @@
 #include <GuiListView.au3>
 #include <Misc.au3>
 #include "Json.au3"
+#include "wd_core.au3"
+#include "wd_helper.au3"
+
+; --- BIẾN TOÀN CỤC CHO WEBDRIVER ---
+Global $g_sSession = "" ; Lưu phiên làm việc của Chrome
+
 ; --- ÉP CHUẨN MÔI TRƯỜNG ĐỂ CHỐNG LỆCH TỌA ĐỘ TRÊN MÁY KHÁCH ---
 Opt("MouseCoordMode", 1)  ; 1 = Chuột dùng Tọa độ tuyệt đối toàn màn hình
 Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toàn màn hình
@@ -32,7 +38,7 @@ Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbz
 Global Const $g_sDevPassword = "nmn12nntv21"
 Global Const $g_sToolName = "Tool_AIO"
 ; --- CẤU HÌNH AUTO UPDATE GITHUB ---
-Global Const $g_sVersion = "4.7" ; Phiên bản hiện tại
+Global Const $g_sVersion = "4.8" ; Phiên bản hiện tại
 Global Const $g_sCopyright = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -65,6 +71,10 @@ Global $g_hInput_Limit20_50KX, $g_hInput_Limit20_50KY, $g_hButton_GetLimit20_50K
 Global $g_hInput_LimitConfirmX, $g_hInput_LimitConfirmY, $g_hButton_GetLimitConfirm
 Global $g_hCheckbox_PinTool, $g_hGroup_BettingMethod
 Global $g_hGroup_XocDiaGrid
+
+Global $g_hCheckbox_XD_AutoResetDebt, $g_hInput_XD_TargetProfit
+Global $g_hCheckbox_XD_LowDebtPriority
+Global $g_fXD_CycleProfit = 0.0 ; Biến đếm lãi/lỗ của chu kỳ hiện tại để chốt
 
 ; --- KHAI BÁO BIẾN ÉP ẨN GIAO DIỆN TRÁI (Dán lên đầu file) ---
 Global $g_hGroup_BettingMethod, $g_hCheckbox_SeparateQLV, $g_hCheckbox_ReverseLogic
@@ -369,12 +379,23 @@ Func _Main()
     ; ---> LẤY HWID TRƯỚC TIÊN <---
     $g_sHWID = _GetHardwareID()
 
-; --- BẮT ĐẦU ĐOẠN ĐĂNG NHẬP (GIAO DIỆN CÓ NÚT COPY) ---
-        Local $bIsLoggedIn = False
-        While Not $bIsLoggedIn
-            ; 1. Tạo giao diện Đăng Nhập chuyên nghiệp
-            Local $hLoginGUI = GUICreate("Đăng Nhập Tool - @nnduy2086", 400, 260, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
-            GUISetBkColor(0xF0F4F8, $hLoginGUI)
+    ; --- BẮT ĐẦU ĐOẠN ĐĂNG NHẬP ---
+    Local $bIsLoggedIn = False
+
+    ; [TÍNH NĂNG MỚI] TỰ ĐỘNG ĐĂNG NHẬP NGẦM NẾU ĐÃ LƯU TÊN TỪ TRƯỚC
+    Local $sSavedUser = IniRead($g_sIniPath, "Settings", "LastUsername", "")
+    If $sSavedUser <> "" Then
+        $g_sCustomerLogin = $sSavedUser
+        ; Gửi thẳng thông tin lên Server để check ngầm
+        $bIsLoggedIn = _CheckLoginOnline($g_sCustomerLogin, $g_sHWID)
+    EndIf
+
+    ; Nếu đăng nhập ngầm thành công, vòng lặp While dưới đây sẽ BỊ BỎ QUA hoàn toàn
+    ; Nếu thất bại (hoặc mở tool lần đầu chưa có tên), bảng đăng nhập mới hiện ra
+    While Not $bIsLoggedIn
+        ; 1. Tạo giao diện Đăng Nhập chuyên nghiệp
+        Local $hLoginGUI = GUICreate("Đăng Nhập Tool - @nnduy2086", 400, 260, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
+        GUISetBkColor(0xF0F4F8, $hLoginGUI)
 
             GUICtrlCreateLabel("MÃ MÁY (HWID) CỦA BẠN LÀ:", 20, 20, 360, 20)
             GUICtrlSetFont(-1, 10, 700, 0, "Segoe UI")
@@ -392,12 +413,14 @@ Func _Main()
             GUICtrlSetColor(-1, 0xFFFFFF)
             GUICtrlSetFont(-1, 10, 800, 0, "Segoe UI")
 
-            ; Hướng dẫn
+           ; Hướng dẫn
             GUICtrlCreateLabel("BƯỚC 1: Bấm COPY gửi mã máy cho Admin." & @CRLF & "BƯỚC 2: Chờ Admin kích hoạt." & @CRLF & "BƯỚC 3: Nhập Tên Đăng Nhập vào ô dưới đây:", 20, 90, 360, 55)
             GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 
-            ; Ô nhập Tên đăng nhập
-            Local $hInput_User = GUICtrlCreateInput("", 20, 155, 360, 30, $ES_CENTER)
+            ; Ô nhập Tên đăng nhập (Đọc tên đã lưu từ file config)
+            Local $sSavedUser = IniRead($g_sIniPath, "Settings", "LastUsername", "")
+            Local $hInput_User = GUICtrlCreateInput($sSavedUser, 20, 155, 360, 30, $ES_CENTER)
+
             GUICtrlSetFont(-1, 12, 700, 0, "Segoe UI")
 
             ; Nút Đăng nhập
@@ -426,6 +449,8 @@ Func _Main()
                     Case $hBtn_Login
                         $sInputUser = StringStripWS(GUICtrlRead($hInput_User), 3)
                         If $sInputUser <> "" Then
+                            ; Ghi nhớ tên đăng nhập vào file cấu hình
+                            IniWrite($g_sIniPath, "Settings", "LastUsername", $sInputUser)
                             ExitLoop
                         Else
                             MsgBox(48 + 262144, "Lỗi", "Vui lòng nhập Tên Đăng Nhập Admin đã cấp!", 0, $hLoginGUI)
@@ -589,19 +614,26 @@ Case $GUI_EVENT_RESTORE
 				_GetColor_Fast($g_hInput_RadarRed)
 			Case $g_hButton_GetRadarBlue
 				_GetColor_Fast($g_hInput_RadarBlue)
-			Case $GUI_EVENT_CLOSE
-				If $aMsg[1] = $g_hGUI Then
-					Local $aPos = WinGetPos($g_hGUI)
-					; Thêm điều kiện > -10000 để chống lưu tọa độ ảo khi thu nhỏ
-					If IsArray($aPos) And $aPos[0] > -10000 Then
-						IniWrite($g_sIniPath, "Settings", "WinX", $aPos[0])
-						IniWrite($g_sIniPath, "Settings", "WinY", $aPos[1])
-					EndIf
-					_MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
-					Exit
-				EndIf
-			Case $g_hButton_SaveNewProfile
-; Code cũ: Local $sNewProfile = InputBox("Tạo Sảnh Mới", "Nhập tên cho sảnh...", "Sảnh Evo - Long Long")
+Case $GUI_EVENT_CLOSE
+    If $aMsg[1] = $g_hGUI Then
+        Local $aPos = WinGetPos($g_hGUI)
+        If IsArray($aPos) And $aPos[0] > -10000 Then
+            IniWrite($g_sIniPath, "Settings", "WinX", $aPos[0])
+            IniWrite($g_sIniPath, "Settings", "WinY", $aPos[1])
+        EndIf
+        _MasterSave(GUICtrlRead($g_hCombo_Profiles_Main))
+
+        ; --- THÊM DÒNG NÀY ĐỂ TẮT CHROME DRIVER ---
+        If $g_sSession <> "" Then
+            _WD_DeleteSession($g_sSession)
+            _WD_Shutdown()
+        EndIf
+        ; ------------------------------------------
+
+        Exit
+    EndIf
+		Case $g_hButton_SaveNewProfile
+			; Code cũ: Local $sNewProfile = InputBox("Tạo Sảnh Mới", "Nhập tên cho sảnh...", "Sảnh Evo - Long Long")
 
 Local $sNewName = InputBox("Cấp Phát Cấu Hình VIP", "Nhập thông tin theo cú pháp 3 phần:" & @CRLF & "[TênKhách]_[TênSảnh]_[TròChơi]" & @CRLF & @CRLF & "Ví dụ 1: thuydung_Sexy_XocDia" & @CRLF & "Ví dụ 2: thuydung_WM_Baccarat", "")
 
@@ -679,76 +711,81 @@ Local $sNewName = InputBox("Cấp Phát Cấu Hình VIP", "Nhập thông tin the
 			Case $g_hBtn_DeleteFormula
 				_DeleteSelectedFormula()
 			Case $g_hListView_VIP
-			Case $g_hButton_Start
-				; ---> CHÈN THÊM ĐOẠN KHÓA CHẾT NÀY VÀO ĐÂY <---
-				Local $sLockedDate = IniRead($g_sIniPath, "SessionData", "LockedDate", "")
-				If $sLockedDate == _GetGamingDate() And Not $g_bIsRunning Then
-					MsgBox(48, "Hệ Thống Đã Khóa", "Báo cáo Sếp! Hệ thống đã hoàn thành chỉ tiêu Chốt Lời / Cắt Lỗ của ngày hôm nay." & @CRLF & @CRLF & "Để bảo vệ kỷ luật vốn, Tool đã khóa tính năng Auto." & @CRLF & "Vui lòng nghỉ ngơi và quay lại vào sau 7h sáng ngày mai!")
-					ContinueLoop
-				EndIf
-				; ------------------------------------------------
+Case $g_hButton_Start
+                If $g_bIsRunning Then
+                    ; NẾU ĐANG CHẠY MÀ BẤM THÌ DỪNG LẠI
+                    _StopProcess()
+                    GUICtrlSetData($g_hButton_Start, "BẮT ĐẦU QUÉT")
+                    GUICtrlSetBkColor($g_hButton_Start, 0x33CC33) ; Trả về màu Xanh Lá
+                Else
+                    ; ==============================================================
+                    ; QUY TRÌNH 1 CHẠM: MỞ CHROME -> RÌNH POPUP -> CẮM AUTO
+                    ; ==============================================================
 
-				If $g_bIsRunning Then
-					_StopProcess()
-				Else
-					$g_bManualStopped = False
-					Local $sClass = GUICtrlRead($g_hInput_WindowClass)
-					If $g_hTargetGameWin = 0 Or Not WinExists($g_hTargetGameWin) Then
-						GUICtrlSetState($g_hButton_Start, $GUI_DISABLE)
-						GUICtrlSetData($g_hButton_Start, "CHỜ THAO TÁC...")
+                    ; 1. Đổi giao diện nút bấm thành DỪNG để sếp có thể hủy ngang bất kỳ lúc nào
+                    $g_bIsRunning = True
+                    GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
+                    GUICtrlSetData($g_hButton_Start, "DỪNG TOOL")
+                    GUICtrlSetBkColor($g_hButton_Start, 0xFF4141) ; Đổi sang màu Đỏ
 
-						; Gọi bảng thông báo có nút X
-						Local $bUserProceed = _WaitManualAction_Pro("1. Vui lòng TỰ MỞ trình duyệt" & @CRLF & "2. Đăng nhập và vào thẳng sảnh game." & @CRLF & "3. ĐỂ TRÌNH DUYỆT ĐANG HIỂN THỊ, rồi bấm TIẾP TỤC.")
+                    ; 2. Gọi hàm mở Chrome
+                    Local $iInitChrome = _LaunchChrome_WebDriver()
 
-						If Not $bUserProceed Then
-							_UpdateStatus("🛑 Đã hủy đăng nhập.")
-							GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-							GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
-							ContinueLoop
-						EndIf
-
-						$g_hTargetGameWin = _GetRealGameWindow($sClass)
-					EndIf
-
-					If $g_hTargetGameWin <> 0 And WinExists($g_hTargetGameWin) Then
-						_UpdateStatus("✅ Đã móc nối thành công vào trình duyệt thật! Bắt đầu quét...")
-						GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-						_StartProcess()
-					Else
-						_UpdateStatus("🛑 Lỗi: Không tìm thấy cửa sổ game ĐANG HIỂN THỊ!")
-						GUICtrlSetState($g_hButton_Start, $GUI_ENABLE)
-						GUICtrlSetData($g_hButton_Start, "ĐĂNG NHẬP")
-						$g_hTargetGameWin = 0
-					EndIf
-				EndIf
+                    If $iInitChrome == 1 Then
+                        ; 3. Chrome mở xong, lập tức chuyển sang trạng thái "Treo Ngầm Rình Popup"
+                        If _AutoCatchPopup_And_Maximize() Then
+                            ; Nếu hàm trên trả về True (Chộp được Popup) -> Chuyển thẳng sang hàm Quét Kết Quả
+                            _UpdateStatus("🚀 [CHỐT TỌA ĐỘ] Đã khóa cứng vào bàn Game. Bắt đầu nã đạn!")
+                            _StartProcess()
+                        Else
+                            ; Nếu hàm trả về False (Do sếp bấm DỪNG lúc đang chờ)
+                            _UpdateStatus("🛑 Đã hủy quá trình chờ Game.")
+                            _StopProcess()
+                        EndIf
+                    Else
+                        ; Lỗi không mở được Chrome (Lỗi WebDriver)
+                        _UpdateStatus("🛑 Lỗi: Không thể khởi động Chrome WebDriver!")
+                        _StopProcess()
+                    EndIf
+                EndIf
 			Case $g_hButton_Stop
 				_SyncVolumeToServer()
 				_StopProcess()
 Case $g_hButton_Unlock
-Local $sCurrentText = GUICtrlRead($g_hButton_Unlock)
+                Local $sCurrentText = GUICtrlRead($g_hButton_Unlock)
 
-If StringInStr($sCurrentText, "MỞ KHÓA") Then
-Local $sPass = InputBox("Yêu cầu mật khẩu", "Vui lòng nhập mật khẩu...", "", "*")
-If $sPass == $g_sDevPassword Then
-	_ToggleTechRoom($GUI_SHOW)
+                ; 1. NẾU ĐANG KHÓA -> YÊU CẦU MẬT KHẨU ĐỂ MỞ CHO ADMIN
+                If StringInStr($sCurrentText, "MỞ KHÓA") Then
+                    Local $sPass = InputBox("Yêu cầu mật khẩu", "Vui lòng nhập mật khẩu...", "", "*")
+                    If $sPass == $g_sDevPassword Then
+                        $g_bIsDevMode = True ; Cấp quyền Admin toàn cục
 
-	; ---> THÊM DÒNG NÀY ĐỂ MỞ SÁNG CÁC Ô TEXTBOX <---
-	_ToggleConfigControlsState(True)
+                        _ToggleTechRoom($GUI_SHOW) ; Hiện các nút lấy tọa độ
+                        _ToggleConfigControlsState(True) ; Mở sáng các ô nhập liệu
+                        _UpdateVipButtonState() ; Cập nhật nút VIP sang chế độ Admin Test
 
-	GUICtrlSetData($g_hButton_Unlock, "🔓 KHÓA LẠI")
-	GUICtrlSetBkColor($g_hButton_Unlock, 0x33CC33)
-ElseIf $sPass <> "" Then
-	MsgBox(16, "Lỗi", "Sai mật khẩu!")
-EndIf
-Else
-_ToggleTechRoom($GUI_HIDE)
+                        ; Đổi giao diện nút thành nút KHÓA
+                        GUICtrlSetData($g_hButton_Unlock, "🔓 KHÓA LẠI")
+                        GUICtrlSetBkColor($g_hButton_Unlock, 0x33CC33)
+                    ElseIf $sPass <> "" Then
+                        MsgBox(16, "Lỗi", "Sai mật khẩu!")
+                    EndIf
 
-; ---> THÊM DÒNG NÀY ĐỂ LÀM XÁM CÁC Ô (KHÓA LẠI) <---
-_ToggleConfigControlsState(False)
+                ; 2. NẾU ĐANG MỞ -> BẤM ĐỂ KHÓA LẠI CHO KHÁCH HÀNG
+                Else
+                    $g_bIsDevMode = False ; Tước quyền Admin
 
-GUICtrlSetData($g_hButton_Unlock, "🔐 MỞ KHÓA")
-GUICtrlSetBkColor($g_hButton_Unlock, 0xFF4141)
-EndIf
+                    _ToggleTechRoom($GUI_HIDE) ; Ẩn các nút lấy tọa độ
+                    _ToggleConfigControlsState(False) ; Làm xám (khóa) các ô nhập liệu
+                    _UpdateVipButtonState() ; Trả nút VIP về chế độ Khách hàng (bắt buộc mua)
+
+                    ; Đổi giao diện nút về mặc định
+                    GUICtrlSetData($g_hButton_Unlock, "🔐 MỞ KHÓA")
+                    GUICtrlSetBkColor($g_hButton_Unlock, 0xFF4141)
+
+                    ; Báo cáo thành công cho Admin yên tâm bàn giao
+                    MsgBox(64, "Đã Khóa", "Đã khóa Phòng Kỹ Thuật an toàn." & @CRLF & "Tool hiện đang ở chế độ dành cho Khách Hàng!")
+                EndIf
 			Case $g_hButton_Lock
 				$g_bIsDevMode = False
 				_ToggleConfigControlsState(False)
@@ -1336,7 +1373,7 @@ Func _HandleTestColorButton($sArea)
 	Local $bFound = False
 
 	Switch $sArea
-		Case "Result"
+Case "Result"
 			$iX1 = Number(GUICtrlRead($g_hInput_ResultX1))
 			$iY1 = Number(GUICtrlRead($g_hInput_ResultY1))
 			$iX2 = Number(GUICtrlRead($g_hInput_ResultX2))
@@ -1350,17 +1387,20 @@ Func _HandleTestColorButton($sArea)
 			If $iX2 = 0 Then $iX2 = $iX1 + 1
 			If $iY2 = 0 Then $iY2 = $iY1 + 1
 
+            ; KIỂM TRA XEM CÓ ĐANG BẬT XÓC ĐĨA VIP KHÔNG
+            Local $bIsXocDia = (GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED)
+
 			If IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColB, $iTolerance, 1, $hWnd)) Then
 				$bFound = True
-				$sMsgSuccess = "OK! Tìm thấy: BANKER"
+				$sMsgSuccess = "OK! Tìm thấy: " & ($bIsXocDia ? "CHẴN (ĐỎ)" : "BANKER")
 			ElseIf IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColP, $iTolerance, 1, $hWnd)) Then
 				$bFound = True
-				$sMsgSuccess = "OK! Tìm thấy: PLAYER"
-			ElseIf IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColT, $iTolerance, 1, $hWnd)) Then
+				$sMsgSuccess = "OK! Tìm thấy: " & ($bIsXocDia ? "LẺ (XANH)" : "PLAYER")
+			ElseIf Not $bIsXocDia And IsArray(PixelSearch($iX1, $iY1, $iX2, $iY2, $iColT, $iTolerance, 1, $hWnd)) Then
+                ; CHỈ QUÉT HÒA NẾU KHÔNG PHẢI XÓC ĐĨA
 				$bFound = True
 				$sMsgSuccess = "OK! Tìm thấy: HÒA (TIE)"
 			EndIf
-
 		Case "Timer"
 			$iX1 = Number(GUICtrlRead($g_hInput_BetTimeX1))
 			$iY1 = Number(GUICtrlRead($g_hInput_BetTimeY1))
@@ -1965,6 +2005,7 @@ Func _StopProcess()
 	$g_iCapitalLevel = 0
 	$g_iCustomSeqStep = 0
 	$g_iLastActiveRuleIndex = -1
+	$g_fXD_CycleProfit = 0
 	For $i = 0 To UBound($g_aRuleLevels) - 1
 		$g_aRuleLevels[$i] = 0
 	Next
@@ -2373,32 +2414,37 @@ Func _ClickChipsForAmount($hGameWin, ByRef $fAmount, $aBetAreaPos)
 	Local $iBaseDelay = Number(GUICtrlRead($g_hInput_ClickDelay_Main))
 	If $iBaseDelay < 150 Then $iBaseDelay = 150
 
-	; Lấy tọa độ gốc của cửa sổ Game để tính tọa độ tương đối
-	Local $aWinPos = WinGetPos($hGameWin)
-	If Not IsArray($aWinPos) Then Return False
-	Local $iWinX = $aWinPos[0]
-	Local $iWinY = $aWinPos[1]
+	; Dịch tọa độ Vùng Cược sang tọa độ ngầm
+	Local $tTarget = DllStructCreate("long X;long Y")
+	DllStructSetData($tTarget, "X", $aBetAreaPos[0])
+	DllStructSetData($tTarget, "Y", $aBetAreaPos[1])
+	_WinAPI_ScreenToClient($hGameWin, $tTarget)
+	Local $iTargetClientX = DllStructGetData($tTarget, "X")
+	Local $iTargetClientY = DllStructGetData($tTarget, "Y")
 
 	For $i = 0 To $iTotalSteps - 1
-		Local $iChipX = $aClickQueue[$i][0] - $iWinX ; Tọa độ tương đối của Chip
-		Local $iChipY = $aClickQueue[$i][1] - $iWinY
+		; Dịch tọa độ Chip sang tọa độ ngầm
+		Local $tChip = DllStructCreate("long X;long Y")
+		DllStructSetData($tChip, "X", $aClickQueue[$i][0])
+		DllStructSetData($tChip, "Y", $aClickQueue[$i][1])
+		_WinAPI_ScreenToClient($hGameWin, $tChip)
+		Local $iChipClientX = DllStructGetData($tChip, "X")
+		Local $iChipClientY = DllStructGetData($tChip, "Y")
+
 		Local $iCount = $aClickQueue[$i][2]
 
 		; =========================================================
 		; 1. LẤY CHIP BẰNG CHUỘT ẢO (Nhấp đúp ngầm)
 		; =========================================================
-		ControlClick($hGameWin, "", "", "left", 2, $iChipX, $iChipY)
+		ControlClick($hGameWin, "", "", "left", 2, $iChipClientX, $iChipClientY)
 		Sleep(300) ; Chờ Web game sáng phỉnh
 
 		; =========================================================
 		; 2. VÀO TIỀN BẰNG CHUỘT ẢO (Xả đạn ngầm)
 		; =========================================================
-		Local $iTargetX = $aBetAreaPos[0] - $iWinX ; Tọa độ tương đối của vùng Cược
-		Local $iTargetY = $aBetAreaPos[1] - $iWinY
-
 		For $j = 1 To $iCount
 			If Not $g_bIsRunning Then Return False
-			ControlClick($hGameWin, "", "", "left", 1, $iTargetX, $iTargetY)
+			ControlClick($hGameWin, "", "", "left", 1, $iTargetClientX, $iTargetClientY)
 			Sleep($iBaseDelay)
 		Next
 	Next
@@ -2406,21 +2452,28 @@ Func _ClickChipsForAmount($hGameWin, ByRef $fAmount, $aBetAreaPos)
 	Return True
 EndFunc
 Func _SingleClick($hWnd, $iX, $iY, $iRadius = 0)
-	If $iX <= 0 Or $iY <= 0 Then Return False
-	If $hWnd = 0 Or Not WinExists($hWnd) Then Return False
+    If $iX <= 0 Or $iY <= 0 Then Return False
+    If $hWnd = 0 Or Not WinExists($hWnd) Then Return False
 
-	; Chuyển đổi tọa độ toàn màn hình (Absolute) sang tọa độ trong cửa sổ (Client/Relative)
-	Local $aWinPos = WinGetPos($hWnd)
-	If Not IsArray($aWinPos) Then Return False
+    ; Dịch tọa độ sang tọa độ ngầm
+    Local $tPoint = DllStructCreate("long X;long Y")
+    DllStructSetData($tPoint, "X", $iX)
+    DllStructSetData($tPoint, "Y", $iY)
+    _WinAPI_ScreenToClient($hWnd, $tPoint)
+    Local $iClientX = DllStructGetData($tPoint, "X")
+    Local $iClientY = DllStructGetData($tPoint, "Y")
 
-	Local $iRelX = $iX - $aWinPos[0]
-	Local $iRelY = $iY - $aWinPos[1]
+    ; Bơm lệnh JavaScript Click thẳng vào phần tử tại tọa độ (Chuẩn xác tuyệt đối)
+    If $g_sSession <> "" Then
+        Local $sJS = "var el = document.elementFromPoint(" & $iClientX & ", " & $iClientY & "); if(el) el.click();"
+        _WD_ExecuteScript($g_sSession, $sJS)
+    Else
+        ; Dự phòng nếu WebDriver bị lỗi thì xài lại ControlClick
+        ControlClick($hWnd, "", "", "left", 1, $iClientX, $iClientY)
+    EndIf
 
-	; Gửi tín hiệu click ngầm không chiếm chuột
-	ControlClick($hWnd, "", "", "left", 1, $iRelX, $iRelY)
-	Sleep(20)
-
-	Return True
+    Sleep(20)
+    Return True
 EndFunc
 Func _CalculateOptimalClicks(ByRef $fTargetAmount)
 	Local $aActiveChips[1][3] ; [Value, X, Y]
@@ -2849,6 +2902,10 @@ Func _SetControlsState($bEnable)
 	; Khóa các ô Cấu hình Xóc Đĩa VIP
 	GUICtrlSetState($g_hInput_XD_Seq, $iState)
 	GUICtrlSetState($g_hInput_XD_MaxRows, $iState)
+
+	GUICtrlSetState($g_hCheckbox_XD_AutoResetDebt, $iState)
+GUICtrlSetState($g_hInput_XD_TargetProfit, $iState)
+GUICtrlSetState($g_hCheckbox_XD_LowDebtPriority, $iState)
 
 	; Khóa Mục Tiêu & Dừng Nghỉ
 	GUICtrlSetState($g_hCheckbox_DailyShield, $iState)
@@ -3376,6 +3433,10 @@ Func _MasterSave($sProfileName, $bIsAutoSave = False)
 	IniWrite($g_sIniPath, $sSec, "DuKichLoss", GUICtrlRead($g_hInput_DuKich_LossTable))
 	IniWrite($g_sIniPath, $sSec, "DuKichRest", GUICtrlRead($g_hInput_DuKich_RestTime))
 	IniWrite($g_sIniPath, $sSec, "ChkBaccaratLaser", GUICtrlRead($g_hCheckbox_BaccaratLaser))
+
+	IniWrite($g_sIniPath, $sSec, "XD_AutoReset", GUICtrlRead($g_hCheckbox_XD_AutoResetDebt))
+IniWrite($g_sIniPath, $sSec, "XD_TargetProf", GUICtrlRead($g_hInput_XD_TargetProfit))
+IniWrite($g_sIniPath, $sSec, "XD_LowDebt", GUICtrlRead($g_hCheckbox_XD_LowDebtPriority))
 ; LƯU TRẠNG THÁI CHẠM MỐC NGHỈ/DỪNG
 	IniWrite($g_sIniPath, $sSec, "ActionStop", GUICtrlRead($g_hRadio_Action_Stop))
 	IniWrite($g_sIniPath, $sSec, "ActionPauseMin", GUICtrlRead($g_hRadio_Action_PauseMin))
@@ -3538,6 +3599,10 @@ Func _LoadSelectedProfile($sProfileName)
 
 	GUICtrlSetData($g_hInput_RadarRed, IniRead($g_sIniPath, $sSec, "RadarRedColor", ""))
 	GUICtrlSetData($g_hInput_RadarBlue, IniRead($g_sIniPath, $sSec, "RadarBlueColor", ""))
+
+	GUICtrlSetState($g_hCheckbox_XD_AutoResetDebt, Number(IniRead($g_sIniPath, $sSec, "XD_AutoReset", 4)))
+GUICtrlSetData($g_hInput_XD_TargetProfit, IniRead($g_sIniPath, $sSec, "XD_TargetProf", "50.000"))
+GUICtrlSetState($g_hCheckbox_XD_LowDebtPriority, Number(IniRead($g_sIniPath, $sSec, "XD_LowDebt", 4)))
 
 	; --- NẠP CẤU HÌNH DU KÍCH 12 BÀN ---
 	GUICtrlSetState($g_hCheckbox_DuKichDaBan, Number(IniRead($g_sIniPath, $sSec, "ChkDuKichDaBan", 4)))
@@ -5656,24 +5721,67 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
     If $iTargetRows < 1 Then $iTargetRows = 1
     If $iTargetRows > 10 Then $iTargetRows = 10
 
+    ; 1. CỘNG TRỪ TIỀN CHU KỲ (Để tính chốt vòng xóa nợ)
     If $bIsWin Then
-        _UpdateStatus("✅ [KẾT QUẢ] Húp [" & $sActualResult & "]! -> Trả xong nợ Hàng " & $g_iCurrentTier & ". Bay về Hàng 1.")
-
-        ; TUYỆT ĐỐI CHỈ xóa nợ của hàng vừa thắng
-        $g_aTierStep[$g_iCurrentTier] = 1
-
-        ; Bay thẳng về Hàng 1 đánh tiếp
-        $g_iCurrentTier = 1
+        $g_fXD_CycleProfit += ($g_fCurrentBet * 0.95) ; Tính phế 0.95
+        _UpdateStatus("✅ [KẾT QUẢ] Húp [" & $sActualResult & "]! -> Trả xong nợ Hàng " & $g_iCurrentTier & ".")
+        $g_aTierStep[$g_iCurrentTier] = 1 ; Trả xong nợ thì reset bước của hàng đó về 1
     Else
-        _UpdateStatus("❌ [KẾT QUẢ] Gãy [" & $sBetOn & "]. -> Treo nợ Hàng " & $g_iCurrentTier & ", lùi xuống.")
+        $g_fXD_CycleProfit -= $g_fCurrentBet
+        _UpdateStatus("❌ [KẾT QUẢ] Gãy [" & $sBetOn & "]. -> Treo nợ Hàng " & $g_iCurrentTier & ", tăng bước.")
+        $g_aTierStep[$g_iCurrentTier] += 1 ; Thua thì tăng bước nợ
+    EndIf
 
-        ; Ghi nợ cho hàng hiện tại
-        $g_aTierStep[$g_iCurrentTier] += 1
-
-        ; Lùi xuống hàng dự phòng nếu còn
-        If $g_iCurrentTier < $iTargetRows Then
-            $g_iCurrentTier += 1
+    ; 2. CHỐT LỜI CHU KỲ (TỰ XÓA ĐỒNG LOẠT NỢ)
+    Local $bAllClean = False
+    If GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED Then
+        Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_XD_TargetProfit), "\D", ""))
+        If $fTarget > 0 And $g_fXD_CycleProfit >= $fTarget Then
+            _UpdateStatus("🎉 [CHỐT LỜI VÒNG] Lãi chu kỳ đạt +" & _FormatNumber($g_fXD_CycleProfit) & "đ! XÓA SẠCH NỢ, Về Lại H1 B1.")
+            For $i = 1 To 10
+                $g_aTierStep[$i] = 1
+            Next
+            $g_fXD_CycleProfit = 0 ; Reset chu kỳ tiền
+            $bAllClean = True
         EndIf
+    EndIf
+
+    ; Bảo trì: Kiểm tra xem mọi hàng đã về Bước 1 hết chưa (nếu chưa chốt lời vòng)
+    If Not $bAllClean Then
+        $bAllClean = True
+        For $i = 1 To $iTargetRows
+            If $g_aTierStep[$i] > 1 Then
+                $bAllClean = False
+                ExitLoop
+            EndIf
+        Next
+        If $bAllClean Then $g_fXD_CycleProfit = 0
+    EndIf
+
+    ; 3. LOGIC MỚI: TÌM HÀNG CÓ NỢ (BƯỚC) NHỎ NHẤT ĐỂ ĐÁNH VÁN SAU
+    ; Nếu vừa chốt lời vòng (tất cả về 1), nó sẽ tự động chọn Hàng 1
+    Local $iMinStep = 9999
+    Local $iBestTier = 1
+
+    ; Quét tìm hàng có nợ (Bước) thấp nhất
+    For $i = 1 To $iTargetRows
+        If $g_aTierStep[$i] < $iMinStep Then
+            $iMinStep = $g_aTierStep[$i]
+            $iBestTier = $i
+        EndIf
+    Next
+
+    ; Nếu hàng được chọn đã vượt quá số bước cho phép (chạm nóc kịch kim)
+    ; Thì reset toàn bộ để cắt lỗ và bắt đầu lại từ Hàng 1
+    If $iMinStep > $g_iDynamicMaxSteps Then
+         _UpdateStatus("⚠️ [CẮT LỖ TOÀN CỤC] Hàng nợ thấp nhất cũng đã vượt quá " & $g_iDynamicMaxSteps & " bước! Reset toàn bộ hệ thống.")
+         For $i = 1 To 10
+             $g_aTierStep[$i] = 1
+         Next
+         $g_iCurrentTier = 1
+    Else
+         $g_iCurrentTier = $iBestTier
+         _UpdateStatus("🎯 [PHÂN BỔ] Lệnh tiếp theo: Hàng " & $g_iCurrentTier & " (Đang nợ thấp nhất: Bước " & $iMinStep & ").")
     EndIf
 
     _UpdateXocDiaGridUI()
@@ -5888,17 +5996,30 @@ Func _CreateGroup_XocDia_Grid()
         Next
     Next
 
-    $yOffset += 10 * ($hCell+5) + 5
+$yOffset += 10 * ($hCell+5) + 2
 
-	$g_hLbl_XD_Seq = GUICtrlCreateLabel("Hệ số (x Vốn):", $xOffset, $yOffset + 2, 85, 20)
-	GUICtrlSetFont(-1, 8.5, 700)
-	$g_hInput_XD_Seq = GUICtrlCreateInput("1, 2, 4, 8, 17, 35, 75", $xOffset + 85, $yOffset, 110, 22)
-	GUICtrlSetBkColor(-1, 0xFFFACD)
+    $g_hLbl_XD_Seq = GUICtrlCreateLabel("Hệ số (x Vốn):", $xOffset, $yOffset + 2, 85, 20)
+    GUICtrlSetFont(-1, 8.5, 700)
+    $g_hInput_XD_Seq = GUICtrlCreateInput("1, 2, 4, 8, 17, 35, 75", $xOffset + 85, $yOffset, 110, 22)
+    GUICtrlSetBkColor(-1, 0xFFFACD)
 
-	GUICtrlCreateLabel("Hàng:", $xOffset + 200, $yOffset + 2, 35, 20)
-	GUICtrlSetFont(-1, 8.5, 700)
-	$g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 235, $yOffset, 30, 22)
-	GUICtrlSetBkColor(-1, 0xE0FFFF)
+    GUICtrlCreateLabel("Hàng:", $xOffset + 200, $yOffset + 2, 35, 20)
+    GUICtrlSetFont(-1, 8.5, 700)
+    $g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 235, $yOffset, 30, 22)
+    GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+    ; >>> CHÈN THÊM 2 TÍNH NĂNG MỚI VÀO ĐÂY <<<
+    $yOffset += 25
+    $g_hCheckbox_XD_AutoResetDebt = GUICtrlCreateCheckbox("Tự xóa nợ khi Lãi >=", $xOffset, $yOffset, 145, 20)
+    GUICtrlSetFont(-1, 8.5, 700)
+    GUICtrlSetColor(-1, 0x0000FF)
+    $g_hInput_XD_TargetProfit = GUICtrlCreateInput("50.000", $xOffset + 145, $yOffset - 2, 120, 22)
+    GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+    $yOffset += 25
+$g_hCheckbox_XD_LowDebtPriority = GUICtrlCreateCheckbox("Ưu tiên gỡ nợ nhỏ nhất", $xOffset, $yOffset, 260, 20)
+GUICtrlSetFont(-1, 8.5, 700)
+    GUICtrlSetColor(-1, 0x008000)
 
     $yOffset += 25
     $g_hLbl_XD_Status = GUICtrlCreateLabel("Trạng thái: Đang chờ tín hiệu...", $xOffset, $yOffset, 260, 40)
@@ -5914,6 +6035,9 @@ Func _ToggleXocDiaGridState($iState)
 	GUICtrlSetState($g_hLbl_XD_Seq, $iState)
 	GUICtrlSetState($g_hInput_XD_Seq, $iState)
 	GUICtrlSetState($g_hInput_XD_MaxRows, $iState)
+	GUICtrlSetState($g_hCheckbox_XD_AutoResetDebt, $iState)
+GUICtrlSetState($g_hInput_XD_TargetProfit, $iState)
+GUICtrlSetState($g_hCheckbox_XD_LowDebtPriority, $iState)
 
     For $c = 1 To 12
         GUICtrlSetState($g_aXD_Cols[$c], $iState)
@@ -5937,3 +6061,103 @@ Func _CheckForUpdates()
 	EndIf
 EndFunc
 
+Func _LaunchChrome_WebDriver()
+    _UpdateStatus("🚀 Đang mở Chrome. Sếp chuẩn bị đăng nhập nhé...")
+    $_WD_DEBUG = $_WD_DEBUG_None
+
+    _WD_Option('Driver', @ScriptDir & '\chromedriver.exe')
+    _WD_Option('Port', 9515)
+    _WD_Option('DriverParams', '--port=9515 --silent')
+    _WD_Option('Console', 'Hide')
+
+    Local $sDataDir = @ScriptDir & "\ChromeData"
+    If Not FileExists($sDataDir) Then DirCreate($sDataDir)
+    $sDataDir = StringReplace($sDataDir, "\", "/")
+
+    _WD_Startup()
+    If @error Then Return 0
+
+    WinSetState("[TITLE:" & @ScriptDir & "\chromedriver.exe]", "", @SW_HIDE)
+    WinSetState("[TITLE:chromedriver.exe]", "", @SW_HIDE)
+
+    ; Mở Chrome lên (Không ép Maximize vội, để sếp dễ thao tác)
+    Local $sDesiredCapabilities = '{"capabilities": {"alwaysMatch": {"browserName": "chrome", "goog:chromeOptions": {"excludeSwitches": ["enable-automation"], "useAutomationExtension": false, "args": ["--user-data-dir=' & $sDataDir & '"]}}}}'
+
+    $g_sSession = _WD_CreateSession($sDesiredCapabilities)
+    If @error Or $g_sSession == "" Then
+        _WD_Shutdown()
+        Return 0
+    EndIf
+
+   ; Vào thẳng trang chủ Game
+    _WD_Navigate($g_sSession, "https://8k3071q.top")
+
+    ; ÉP PHÓNG TO (MAXIMIZE) TRÌNH DUYỆT NGAY LẬP TỨC
+    _WD_Window($g_sSession, "maximize")
+    Sleep(1000) ; Chờ giao diện tải và giãn khung ổn định
+
+; --- THUẬT TOÁN TÌM VÀ CLICK NÚT "ĐÓNG" QUẢNG CÁO BẰNG XPATH ---
+    _UpdateStatus("Đang cố gắng tìm và đóng khung quảng cáo bằng XPath...")
+
+    ; Tìm phần tử <span> chứa chữ "Đóng" hoặc có thuộc tính translate='Common_Closed'
+    Local $sClickJS = "var btn = document.evaluate(""//span[text()='Đóng' or @translate='Common_Closed']"", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;" & _
+                      "if (btn) { btn.click(); }"
+
+    ; Bắn lệnh 3 lần liên tiếp, mỗi lần cách nhau 1.5 giây để chắc chắn ăn
+    For $i = 1 To 3
+        _WD_ExecuteScript($g_sSession, $sClickJS)
+        Sleep(1500)
+    Next
+
+    Return 1 ; Trả về 1 báo hiệu mở Chrome thành công
+
+EndFunc
+; --- HÀM TREO NGẦM RÌNH RẬP POPUP GAME XUẤT HIỆN (BẢN V3 - DÙNG WIN API) ---
+Func _AutoCatchPopup_And_Maximize()
+    _UpdateStatus("⏳ [HỆ THỐNG] Đang rình Popup. Sếp tự tắt quảng cáo và bấm mở sảnh Sexy nhé...")
+
+    ; Vòng lặp treo ngầm (Chỉ thoát khi tìm thấy Popup hoặc sếp bấm DỪNG TOOL)
+    While $g_bIsRunning
+        _ProcessGUIMessages() ; Giữ cho giao diện Tool không bị đơ
+
+        ; 1. Quét toàn bộ danh sách cửa sổ Chrome đang mở trên máy bằng lệnh Windows
+        Local $aChromeList = WinList("[CLASS:Chrome_WidgetWin_1]")
+        Local $hPopup = 0
+
+        ; 2. Điều kiện 1: Phải có ít nhất 2 cửa sổ Chrome (1 trang chủ, 1 cái popup vừa đẻ ra)
+        If $aChromeList[0][0] >= 2 Then
+            For $i = 1 To $aChromeList[0][0]
+                Local $hWnd = $aChromeList[$i][1]
+
+                ; Kiểm tra xem cửa sổ có đang hiển thị sáng đèn không
+                If BitAND(WinGetState($hWnd), 2) Then
+                    Local $aPos = WinGetPos($hWnd)
+
+                    ; Điều kiện 2: Lọc ra cửa sổ "Nhỏ hơn màn hình".
+                    ; Trang chủ sếp đang mở Full. Cái Popup đẻ ra (như trong ảnh) bề ngang luôn nhỏ gọn hơn.
+                    If IsArray($aPos) And $aPos[2] > 300 And $aPos[2] < @DesktopWidth - 50 Then
+                        $hPopup = $hWnd ; Đã tóm trúng ID của Popup Sexy
+                        ExitLoop
+                    EndIf
+                EndIf
+            Next
+        EndIf
+
+        ; 3. Nếu đã tóm được Popup -> Ra lệnh kích hoạt và ép bung to kịch trần
+        If $hPopup <> 0 Then
+            _UpdateStatus("⚡ Đã tóm được Popup Sảnh! Đang phóng to...")
+            WinActivate($hPopup)
+            Sleep(200)
+            WinSetState($hPopup, "", @SW_MAXIMIZE)
+            Sleep(800) ; Chờ web bung to và load giao diện ổn định
+
+            ; Bàn giao lại ID Window cho Tool AutoIt quét màu
+            $g_hTargetGameWin = $hPopup
+            Return True
+        EndIf
+
+        Sleep(500) ; Nghỉ nửa giây rồi rình tiếp
+    WEnd
+
+    Return False ; Trả về False nếu sếp bấm Dừng Tool giữa chừng
+EndFunc
