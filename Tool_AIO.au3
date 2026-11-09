@@ -31,7 +31,7 @@ Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toà
 Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbzYsojeFPtUJNwNKMMclP7zuj9TO6XYyq16O02Pi-ef87OP2kYz3TV3kT02XBw_GXuE/exec"
 Global Const $g_sDevPassword       = "nmn12nntv21"
 Global Const $g_sToolName          = "Tool_AIO"
-Global Const $g_sVersion           = "6.0"
+Global Const $g_sVersion           = "6.1"
 Global Const $g_sCopyright         = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL  = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL       = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -124,6 +124,7 @@ Global $g_iXD_LossStreakInRow = 0    ; Đếm số tay thua thông liên tiếp 
 Global $g_iXD_WinStreakInRow = 0     ; Đếm số tay ăn thông liên tiếp tại hàng hiện tại để nhảy hàng
 Global $g_fXD_CycleProfit = 0.0      ; Đếm lãi/lỗ chu kỳ hiện tại để xóa nợ
 Global $g_fXD_AmortizePool = 0.0     ; Quỹ tích lũy lãi phụ để gọt nợ bậc cao
+Global $g_fTableClickBet = 0.0       ; Tiền thật thực tế rải phỉnh xuống mặt bàn (Tách với tiền tính số liệu)
 
 ; --- BIẾN ĐỔI HẠN MỨC XÓC ĐĨA VIP (LIMIT) ---
 Global $g_sCurrentLimitState = "10-500"
@@ -1631,7 +1632,7 @@ Func _StartProcess()
 		$g_hTargetGameWin = $hGameWin
 	EndIf
 
-	; =========================================================================
+; =========================================================================
 	; [LUỒNG 1]: XÓC ĐĨA VIP - QUÉT POPUP LASER & MA TRẬN ĐA TẦNG
 	; =========================================================================
 	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
@@ -1659,10 +1660,10 @@ Func _StartProcess()
 			Local $aAction = _DecideNextAction()
 			If $aAction[0] == "BET" Then
 				Local $sBetOn = $aAction[1]
-				$g_fCurrentBet = $aAction[2]
+				$g_fCurrentBet = $aAction[2] ; Tiền tính số liệu chuẩn theo Ma Trận (Không dính tiền giữ bàn)
 
-				; Nếu là Lệnh Nháp (0đ) -> Ghi nhận cửa cược ngay, không cần chờ đèn xanh thả chip
-				If $g_fCurrentBet <= 0 Then
+				; Nếu ván này không cần rải phỉnh thật xuống mặt bàn
+				If $g_fTableClickBet <= 0 Then
 					$g_sLastBetOn = $sBetOn
 				Else
 					Local $bTimerFound = False
@@ -1678,7 +1679,13 @@ Func _StartProcess()
 					WEnd
 
 					If $g_bIsRunning And $bTimerFound Then
-						_PerformBet($sBetOn, $g_fCurrentBet)
+						Local $fChipToClick = $g_fTableClickBet
+						_PerformBet($sBetOn, $fChipToClick)
+						$g_fTableClickBet = $fChipToClick
+						; Chỉ đồng bộ lại theo chip thực tế nếu đang Đánh Thật ở các bước có tiền (> 0đ)
+						If GUICtrlRead($g_hRadio_XD_RealKeep) == $GUI_CHECKED And $g_fCurrentBet > 0 Then
+							$g_fCurrentBet = $fChipToClick
+						EndIf
 					Else
 						_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
 					EndIf
@@ -2579,6 +2586,7 @@ EndFunc   ;==>_DrawRedCross
 ; ==================================================================================================
 Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 	Local $aResult[3] = ["OBSERVE", "", 0]
+	$g_fTableClickBet = 0
 	Local $sHist = StringRegExpReplace($sHistoryRaw, "[^CL]", "")
 	Local $iLen = StringLen($sHist)
 
@@ -2610,45 +2618,53 @@ Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 	Local $bIsDemoMode = (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED)
 	Local $bIsKeepTable = (GUICtrlRead($g_hCheckbox_XD_AntiKick) == $GUI_CHECKED)
 	Local $iMatrixBet = $g_aXocDia_Seq[$g_iCurrentTier][$iCurrentStep]
-	Local $iBetAmount = $bIsDemoMode ? 0 : $iMatrixBet
+
+	; 1. Tiền tính số liệu ($iStatsBet) luôn lấy 100% theo Ma Trận (cả Thật & Demo), tách rời hoàn toàn với tiền Giữ bàn
+	Local $iStatsBet = $iMatrixBet
+	$g_fTableClickBet = $bIsDemoMode ? 0 : $iMatrixBet
 	Local $bIsAntiKickBet = False
 
-	; KIỂM TRA CƯỢC MỒI GIỮ BÀN (Chỉ kích hoạt khi tích chọn ☑ Giữ bàn)
-	If $iBetAmount == 0 And $bIsKeepTable Then
+	; 2. Kiểm tra ném phỉnh Giữ Bàn (Chỉ click phỉnh lên bàn để giữ ghế, KHÔNG cộng vào $iStatsBet)
+	If $g_fTableClickBet == 0 And $bIsKeepTable Then
 		Local $iAntiKickMax = Number(GUICtrlRead($g_hInput_XD_AntiKick))
 		If $iAntiKickMax > 0 And ($g_iXD_NoBetCount + 1) >= $iAntiKickMax Then
 			Local $fMinBet = Number(StringRegExpReplace(GUICtrlRead($g_hInput_InitialBet), "\D", ""))
 			If $fMinBet <= 0 Then $fMinBet = 10000
-			$iBetAmount = $fMinBet
+			$g_fTableClickBet = $fMinBet
 			$bIsAntiKickBet = True
 		EndIf
 	EndIf
 
 	$aResult[0] = "BET"
 	$aResult[1] = $sTarget
-	$aResult[2] = $iBetAmount
+	$aResult[2] = $iStatsBet
 
-	Local $sKeepStatus = $bIsKeepTable ? ("Nghỉ: " & ($g_iXD_NoBetCount + 1) & "/" & Number(GUICtrlRead($g_hInput_XD_AntiKick)) & " ván") : "Tắt giữ bàn"
-
-	If $iBetAmount > 0 Then
-		If $iBetAmount > 500000 Then
+	; 3. Chỉ đổi hạn mức bàn khi thực sự có rải phỉnh xuống mặt bàn
+	If $g_fTableClickBet > 0 Then
+		If $g_fTableClickBet > 500000 Then
 			_SwitchLimit_VIP("20-50K")
 		Else
 			_SwitchLimit_VIP("10-500")
 		EndIf
+	EndIf
 
+	Local $sKeepStatus = $bIsKeepTable ? ("Nghỉ: " & ($g_iXD_NoBetCount + 1) & "/" & Number(GUICtrlRead($g_hInput_XD_AntiKick)) & " ván") : "Tắt giữ bàn"
+
+	If $bIsDemoMode Then
 		If $bIsAntiKickBet Then
-			Local $sModeTag = $bIsDemoMode ? "[DEMO - GIỮ BÀN]" : "[THẬT - GIỮ BÀN]"
-			_UpdateStatus("🛡️ " & $sModeTag & " Đã nghỉ " & $g_iXD_NoBetCount & " ván -> Ném 1 lệnh nhỏ nhất (" & _FormatNumber($iBetAmount) & "đ) vào [" & $sTarget & "] chống văng!")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " " & $sModeTag & @CRLF & "🛡️ Chống văng: Ném " & _FormatNumber($iBetAmount) & "đ VÀO [" & $sTarget & "]")
+			_UpdateStatus("🛡️ [DEMO - GIỮ BÀN] Rải mồi " & _FormatNumber($g_fTableClickBet) & "đ giữ ghế (Không tính số liệu) | Số liệu Demo: " & _FormatNumber($iStatsBet) & "đ vào [" & $sTarget & "]")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [DEMO - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ (Bỏ qua) | Số liệu: " & _FormatNumber($iStatsBet) & "đ [" & $sTarget & "]")
 		Else
-			_UpdateStatus("💸 [ĐÁNH THẬT] HÀNG " & $g_iCurrentTier & " (B" & $iCurrentStep & ") -> Cược " & _FormatNumber($iBetAmount) & "đ vào [" & $sTarget & "]")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH THẬT]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($iBetAmount) & "đ VÀO [" & $sTarget & "]")
+			_UpdateStatus("🧪 [ĐÁNH DEMO] HÀNG " & $g_iCurrentTier & " (B" & $iCurrentStep & ") -> Số liệu tính: " & _FormatNumber($iStatsBet) & "đ vào [" & $sTarget & "] (" & $sKeepStatus & ")")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH DEMO]" & @CRLF & "🧪 Số liệu tính: " & _FormatNumber($iStatsBet) & "đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
 		EndIf
 	Else
-		If $bIsDemoMode Then
-			_UpdateStatus("🧪 [ĐÁNH DEMO] HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " (Mô phỏng " & _FormatNumber($iMatrixBet) & "đ) vào [" & $sTarget & "] (" & $sKeepStatus & ")")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH DEMO]" & @CRLF & "🧪 Mô phỏng: " & _FormatNumber($iMatrixBet) & "đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
+		If $bIsAntiKickBet Then
+			_UpdateStatus("🛡️ [THẬT - GIỮ BÀN] Đã nghỉ " & $g_iXD_NoBetCount & " ván -> Rải mồi " & _FormatNumber($g_fTableClickBet) & "đ giữ ghế vào [" & $sTarget & "] (Không tính vào số liệu)!")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [THẬT - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "] (Số liệu: 0đ)")
+		ElseIf $g_fTableClickBet > 0 Then
+			_UpdateStatus("💸 [ĐÁNH THẬT] HÀNG " & $g_iCurrentTier & " (B" & $iCurrentStep & ") -> Cược " & _FormatNumber($g_fTableClickBet) & "đ vào [" & $sTarget & "]")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH THẬT]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "]")
 		Else
 			_UpdateStatus("💸 [ĐÁNH NHÁP] HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " (0đ) vào [" & $sTarget & "] (" & $sKeepStatus & ")")
 			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [BƯỚC NHÁP]" & @CRLF & "💰 Đánh nháp 0đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
@@ -2670,8 +2686,8 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 	Local $iJumpWin = Number(GUICtrlRead($g_hInput_XD_JumpWin))
 	If $iJumpWin < 0 Then $iJumpWin = 0
 
-	; 1. Cập nhật bộ đếm ván không cược tiền thật để chống văng bàn
-	If $g_fCurrentBet > 0 Then
+	; 1. Bộ đếm chống văng bàn: Chỉ reset về 0 khi ván vừa rồi CÓ RẢI PHỈNH THẬT xuống mặt bàn
+	If $g_fTableClickBet > 0 Then
 		$g_iXD_NoBetCount = 0
 	Else
 		$g_iXD_NoBetCount += 1
@@ -2685,13 +2701,9 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		$aVirt[$r] = ($r <= $aVirtualParsed[0]) ? Number($aVirtualParsed[$r]) : 0
 	Next
 
-	; Lấy mức tiền chuẩn của ô Ma Trận hiện tại (đảm bảo tính toán chu kỳ chính xác cho cả Thật & Demo)
-	Local $fEffectiveMatrixBet = $g_aXocDia_Seq[$g_iCurrentTier][$g_aTierStep[$g_iCurrentTier]]
-	If $fEffectiveMatrixBet < 0 Then $fEffectiveMatrixBet = 0
-
-	; 2. Tính lãi/lỗ chu kỳ & trích Quỹ Gọt Nợ
+	; 2. Tính lãi/lỗ chu kỳ & trích Quỹ Gọt Nợ theo đúng số tiền tính số liệu ($g_fCurrentBet)
 	If $bIsWin Then
-		Local $fWinAmount = ($fEffectiveMatrixBet * 0.95)
+		Local $fWinAmount = ($g_fCurrentBet * 0.95)
 		$g_fXD_CycleProfit += $fWinAmount
 
 		If $fWinAmount > 0 Then
@@ -2707,7 +2719,7 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 			EndIf
 		EndIf
 	Else
-		$g_fXD_CycleProfit -= $fEffectiveMatrixBet
+		$g_fXD_CycleProfit -= $g_fCurrentBet
 	EndIf
 
 	; 3. TẦNG 1: XỬ LÝ THẮNG / THUA & ĐIỀU KIỆN ĐỐI XỨNG (THUA THÔNG NHẢY / ĂN THÔNG NHẢY)
