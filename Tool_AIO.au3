@@ -31,7 +31,7 @@ Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toà
 Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbzYsojeFPtUJNwNKMMclP7zuj9TO6XYyq16O02Pi-ef87OP2kYz3TV3kT02XBw_GXuE/exec"
 Global Const $g_sDevPassword       = "nmn12nntv21"
 Global Const $g_sToolName          = "Tool_AIO"
-Global Const $g_sVersion           = "6.2"
+Global Const $g_sVersion           = "6.3"
 Global Const $g_sCopyright         = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL  = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL       = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -109,7 +109,9 @@ Global $g_hGroup_XocDiaGrid, $g_hLbl_XD_Status, $g_hLbl_XD_Seq
 Global $g_hLbl_XD_MaxRows, $g_hLbl_XD_Virtual, $g_hCheckbox_XD_AntiKick
 Global $g_hLbl_XD_JumpLoss, $g_hInput_XD_JumpLoss
 Global $g_hLbl_XD_JumpWin, $g_hInput_XD_JumpWin
+Global $g_hRadio_XD_MultiRow, $g_hRadio_XD_SingleRow
 Global $g_hRadio_XD_RealKeep, $g_hRadio_XD_DemoKeep
+Global $g_hLbl_XD_StreakStats, $g_hBtn_XD_StreakDetail
 Global $g_hInput_XD_Seq, $g_hInput_XD_MaxRows, $g_hInput_XD_Virtual, $g_hInput_XD_AntiKick
 Global $g_hCheckbox_XD_AutoResetDebt, $g_hInput_XD_TargetProfit, $g_hCheckbox_XD_ShareDebt
 Global $g_aXocDiaGrid[11][16]        ; Ma trận 10 Hàng x 15 Cột
@@ -125,6 +127,10 @@ Global $g_iXD_WinStreakInRow = 0     ; Đếm số tay ăn thông liên tiếp t
 Global $g_fXD_CycleProfit = 0.0      ; Đếm lãi/lỗ chu kỳ hiện tại để xóa nợ
 Global $g_fXD_AmortizePool = 0.0     ; Quỹ tích lũy lãi phụ để gọt nợ bậc cao
 Global $g_fTableClickBet = 0.0       ; Tiền thật thực tế rải phỉnh xuống mặt bàn (Tách với tiền tính số liệu)
+Global $g_aXD_RowLoss[11] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] ; Theo dõi số tiền nợ thực tế của từng hàng
+Global $g_bXD_SplitUsed = False                               ; Khóa chống lặp vòng tròn Chẻ đôi đỉnh nợ
+Global $g_iXD_CurLossStreak_Cache = 0                         ; Chuỗi thua thông hiện tại để ghi bộ nhớ đệm
+Global $g_sStreakCacheFile = @ScriptDir & "\streak_cache.ini" ; File lưu bộ nhớ đệm thua thông từ trước tới giờ
 
 ; --- BIẾN ĐỔI HẠN MỨC XÓC ĐĨA VIP (LIMIT) ---
 Global $g_sCurrentLimitState = "10-500"
@@ -697,67 +703,67 @@ Func _CreateGroup_QLV_On_Main()
 EndFunc   ;==>_CreateGroup_QLV_On_Main
 
 Func _CreateGroup_XocDia_Grid()
-	$g_hGroup_XocDiaGrid = GUICtrlCreateGroup("📊 GẤP THẾP ĐA TẦNG RIÊNG BIỆT (XÓC ĐĨA)", 10, 125, 350, 400)
+	$g_hGroup_XocDiaGrid = GUICtrlCreateGroup("📊 GẤP THẾP ĐA TẦNG RIÊNG BIỆT (XÓC ĐĨA)", 10, 125, 350, 405)
 	GUICtrlSetFont(-1, 9, 800)
 	GUICtrlSetColor(-1, 0xFF0000)
 
-	Local $yOffset = 143
+	Local $yOffset = 141
 	Local $xOffset = 14
 	Local $wCell = 17
-	Local $hCell = 16
+	Local $hCell = 15
 	Local $spacing = 19
 	Local $startX = $xOffset + 24
 
 	For $c = 1 To 15
-		$g_aXD_Cols[$c] = GUICtrlCreateLabel("B" & $c, $startX + ($c - 1) * $spacing, $yOffset, $wCell + 2, 14, $SS_CENTER)
+		$g_aXD_Cols[$c] = GUICtrlCreateLabel("B" & $c, $startX + ($c - 1) * $spacing, $yOffset, $wCell + 2, 13, $SS_CENTER)
 		GUICtrlSetFont(-1, 7, 700)
 	Next
-	$yOffset += 15
+	$yOffset += 14
 
 	For $r = 1 To 10
-		$g_aXD_Rows[$r] = GUICtrlCreateLabel("H" & $r, $xOffset, $yOffset + ($r - 1) * ($hCell + 4) + 1, 22, 16)
+		$g_aXD_Rows[$r] = GUICtrlCreateLabel("H" & $r, $xOffset, $yOffset + ($r - 1) * ($hCell + 3) + 1, 22, 15)
 		GUICtrlSetFont(-1, 8, 800)
 		GUICtrlSetColor(-1, 0x0000FF)
 
 		For $c = 1 To 15
-			$g_aXocDiaGrid[$r][$c] = GUICtrlCreateLabel("-", $startX + ($c - 1) * $spacing, $yOffset + ($r - 1) * ($hCell + 4), $wCell + 2, $hCell, BitOR($SS_CENTER, 0x0200))
+			$g_aXocDiaGrid[$r][$c] = GUICtrlCreateLabel("-", $startX + ($c - 1) * $spacing, $yOffset + ($r - 1) * ($hCell + 3), $wCell + 2, $hCell, BitOR($SS_CENTER, 0x0200))
 			GUICtrlSetFont(-1, 7, 800)
 			GUICtrlSetBkColor(-1, 0xE0E0E0)
 		Next
 	Next
 
-	$yOffset += 10 * ($hCell + 4) + 4
+	$yOffset += 10 * ($hCell + 3) + 3
 
 	; DÒNG 1: Hệ số & Số Hàng
-	$g_hLbl_XD_Seq = GUICtrlCreateLabel("Hệ số (x Vốn):", $xOffset, $yOffset + 2, 85, 18)
+	$g_hLbl_XD_Seq = GUICtrlCreateLabel("Hệ số (x Vốn):", $xOffset, $yOffset + 2, 82, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
-	$g_hInput_XD_Seq = GUICtrlCreateInput("1, 2, 4, 8, 17, 35, 73, 152, 316, 655", $xOffset + 85, $yOffset, 160, 20)
+	$g_hInput_XD_Seq = GUICtrlCreateInput("1, 2, 4, 8, 17, 35, 73, 152, 316, 655", $xOffset + 82, $yOffset, 155, 20)
 	GUICtrlSetBkColor(-1, 0xFFFACD)
 
-	$g_hLbl_XD_MaxRows = GUICtrlCreateLabel("Hàng:", $xOffset + 255, $yOffset + 2, 35, 18)
+	$g_hLbl_XD_MaxRows = GUICtrlCreateLabel("Hàng:", $xOffset + 245, $yOffset + 2, 35, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
-	$g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 295, $yOffset, 35, 20)
+	$g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 282, $yOffset, 48, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
 
 	; DÒNG 2: Tự xóa nợ khi đạt lãi vòng & Công tắc San sẻ nợ
-	$yOffset += 23
+	$yOffset += 21
 	$g_hCheckbox_XD_AutoResetDebt = GUICtrlCreateCheckbox("Xóa nợ Lãi >=", $xOffset, $yOffset, 105, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x0000FF)
 	GUICtrlSetState(-1, $GUI_CHECKED)
 	GUICtrlSetTip(-1, "Tự động xóa sạch nợ toàn bảng về B1 khi lãi chu kỳ đạt mốc")
 
-	$g_hInput_XD_TargetProfit = GUICtrlCreateInput("20.000", $xOffset + 108, $yOffset - 1, 120, 20)
+	$g_hInput_XD_TargetProfit = GUICtrlCreateInput("20.000", $xOffset + 108, $yOffset - 1, 118, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
 
-	$g_hCheckbox_XD_ShareDebt = GUICtrlCreateCheckbox("San sẻ nợ", $xOffset + 238, $yOffset, 95, 18)
+	$g_hCheckbox_XD_ShareDebt = GUICtrlCreateCheckbox("San sẻ nợ", $xOffset + 235, $yOffset, 95, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0xFF00FF)
 	GUICtrlSetState(-1, $GUI_CHECKED)
 	GUICtrlSetTip(-1, "Bật/Tắt chế độ Chẻ đôi đỉnh nợ (B5->B4) và Gọt nợ bằng quỹ lãi phụ giữa các hàng")
 
 	; DÒNG 3: Nháp từng hàng & Công tắc Bật/Tắt Giữ bàn chống văng
-	$yOffset += 23
+	$yOffset += 21
 	$g_hLbl_XD_Virtual = GUICtrlCreateLabel("Nháp (H1..):", $xOffset, $yOffset + 2, 72, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x008000)
@@ -765,50 +771,71 @@ Func _CreateGroup_XocDia_Grid()
 	GUICtrlSetBkColor(-1, 0xFFFACD)
 	GUICtrlSetTip(-1, "Số tay nháp (0đ) đầu mỗi hàng. Chuẩn: 1, 1, 1, 1, 1")
 
-	$g_hCheckbox_XD_AntiKick = GUICtrlCreateCheckbox("Giữ bàn (ván):", $xOffset + 180, $yOffset, 105, 20)
+	$g_hCheckbox_XD_AntiKick = GUICtrlCreateCheckbox("Giữ bàn (ván):", $xOffset + 180, $yOffset, 105, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0xFF0000)
 	GUICtrlSetState(-1, $GUI_CHECKED)
 	GUICtrlSetTip(-1, "Tích chọn để bật tự động ném 1 lệnh nhỏ nhất chống văng khỏi bàn")
-	$g_hInput_XD_AntiKick = GUICtrlCreateInput("4", $xOffset + 288, $yOffset, 42, 20)
+	$g_hInput_XD_AntiKick = GUICtrlCreateInput("4", $xOffset + 288, $yOffset - 1, 42, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Số ván tối đa không cược trước khi tự ném 1 lệnh nhỏ nhất để giữ ghế")
 
 	; DÒNG 4: Thua thông nhảy hàng & Ăn thông nhảy hàng (Đối xứng)
-	$yOffset += 23
+	$yOffset += 21
 	$g_hLbl_XD_JumpLoss = GUICtrlCreateLabel("Thua thông nhảy:", $xOffset, $yOffset + 2, 102, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x800080)
 	$g_hInput_XD_JumpLoss = GUICtrlCreateInput("1", $xOffset + 102, $yOffset, 50, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Khi thua liên tiếp bao nhiêu tay ở hàng hiện tại thì nhảy sang hàng kế tiếp (Mặc định: 1)")
 
 	$g_hLbl_XD_JumpWin = GUICtrlCreateLabel("Ăn thông nhảy:", $xOffset + 165, $yOffset + 2, 95, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x008000)
 	$g_hInput_XD_JumpWin = GUICtrlCreateInput("0", $xOffset + 262, $yOffset, 68, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
-	GUICtrlSetTip(-1, "Khi ăn liên tiếp bao nhiêu tay ở hàng hiện tại thì nhảy sang hàng kế tiếp (Nhập 0 = Đứng yên làm khiên)")
 
-	; DÒNG 5: Công tắc Chế độ Đánh Thật / Chế độ Đánh Demo
-	$yOffset += 23
+	; DÒNG 5: Công tắc Gấp theo hàng luân phiên / Đi theo 1 hàng duy nhất
+	$yOffset += 21
 	GUIStartGroup()
-	$g_hRadio_XD_RealKeep = GUICtrlCreateRadio("🔥 Chế độ Đánh Thật", $xOffset, $yOffset, 155, 20)
+	$g_hRadio_XD_MultiRow = GUICtrlCreateRadio("🔄 Gấp hàng luân phiên", $xOffset, $yOffset, 158, 19)
+	GUICtrlSetFont(-1, 8.5, 800)
+	GUICtrlSetColor(-1, 0x00008B)
+	GUICtrlSetState(-1, $GUI_CHECKED)
+
+	$g_hRadio_XD_SingleRow = GUICtrlCreateRadio("➡️ Đi 1 hàng duy nhất", $xOffset + 165, $yOffset, 165, 19)
+	GUICtrlSetFont(-1, 8.5, 800)
+	GUICtrlSetColor(-1, 0x800080)
+
+	; DÒNG 6: Công tắc Chế độ Đánh Thật / Chế độ Đánh Demo
+	$yOffset += 20
+	GUIStartGroup()
+	$g_hRadio_XD_RealKeep = GUICtrlCreateRadio("🔥 Chế độ Đánh Thật", $xOffset, $yOffset, 158, 19)
 	GUICtrlSetFont(-1, 8.5, 800)
 	GUICtrlSetColor(-1, 0xFF0000)
 	GUICtrlSetState(-1, $GUI_CHECKED)
 
-	$g_hRadio_XD_DemoKeep = GUICtrlCreateRadio("🧪 Chế độ Đánh Demo", $xOffset + 165, $yOffset, 165, 20)
+	$g_hRadio_XD_DemoKeep = GUICtrlCreateRadio("🧪 Chế độ Đánh Demo", $xOffset + 165, $yOffset, 165, 19)
 	GUICtrlSetFont(-1, 8.5, 800)
 	GUICtrlSetColor(-1, 0x008000)
 	GUIStartGroup()
 
-	; DÒNG 6: Trạng thái
-	$yOffset += 22
-	$g_hLbl_XD_Status = GUICtrlCreateLabel("Trạng thái: Đang chờ tín hiệu...", $xOffset, $yOffset, 330, 34)
-	GUICtrlSetFont(-1, 8.5, 800)
+	; DÒNG 7: Bộ nhớ đệm Thống kê Thua Thông cao nhất từ trước tới giờ
+	$yOffset += 20
+	$g_hLbl_XD_StreakStats = GUICtrlCreateLabel(" thống kê thua thông...", $xOffset, $yOffset, 272, 28, $SS_SUNKEN)
+	GUICtrlSetFont(-1, 7.5, 700)
+	GUICtrlSetBkColor(-1, 0xFFFACD)
+	GUICtrlSetColor(-1, 0x8B0000)
+
+	$g_hBtn_XD_StreakDetail = GUICtrlCreateButton("📊 TK/Xóa", $xOffset + 276, $yOffset, 60, 28)
+	GUICtrlSetFont(-1, 7.5, 800)
+	GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+	; DÒNG 8: Trạng thái
+	$yOffset += 30
+	$g_hLbl_XD_Status = GUICtrlCreateLabel("Trạng thái: Đang chờ tín hiệu...", $xOffset, $yOffset, 335, 30)
+	GUICtrlSetFont(-1, 8, 800)
 	GUICtrlSetColor(-1, 0x008000)
 
+	_UpdateStreakCacheUI()
 	_ToggleXocDiaGridState($GUI_HIDE)
 EndFunc   ;==>_CreateGroup_XocDia_Grid
 
@@ -830,8 +857,12 @@ Func _ToggleXocDiaGridState($iState)
 	GUICtrlSetState($g_hInput_XD_JumpLoss, $iState)
 	GUICtrlSetState($g_hLbl_XD_JumpWin, $iState)
 	GUICtrlSetState($g_hInput_XD_JumpWin, $iState)
+	GUICtrlSetState($g_hRadio_XD_MultiRow, $iState)
+	GUICtrlSetState($g_hRadio_XD_SingleRow, $iState)
 	GUICtrlSetState($g_hRadio_XD_RealKeep, $iState)
 	GUICtrlSetState($g_hRadio_XD_DemoKeep, $iState)
+	GUICtrlSetState($g_hLbl_XD_StreakStats, $iState)
+	GUICtrlSetState($g_hBtn_XD_StreakDetail, $iState)
 
 	For $c = 1 To 15
 		GUICtrlSetState($g_aXD_Cols[$c], $iState)
@@ -873,11 +904,14 @@ Func _SetControlsState($bEnable)
 	GUICtrlSetState($g_hInput_XD_AntiKick, $iState)
 	GUICtrlSetState($g_hInput_XD_JumpLoss, $iState)
 	GUICtrlSetState($g_hInput_XD_JumpWin, $iState)
-	; Cho phép bật/tắt San sẻ nợ, Giữ bàn và đổi Đánh Thật/Demo ngay cả khi Tool đang chạy
+	; Cho phép bật/tắt các công tắc chế độ và xem thống kê ngay cả khi Tool đang chạy
 	GUICtrlSetState($g_hCheckbox_XD_ShareDebt, $GUI_ENABLE)
 	GUICtrlSetState($g_hCheckbox_XD_AntiKick, $GUI_ENABLE)
+	GUICtrlSetState($g_hRadio_XD_MultiRow, $GUI_ENABLE)
+	GUICtrlSetState($g_hRadio_XD_SingleRow, $GUI_ENABLE)
 	GUICtrlSetState($g_hRadio_XD_RealKeep, $GUI_ENABLE)
 	GUICtrlSetState($g_hRadio_XD_DemoKeep, $GUI_ENABLE)
+	GUICtrlSetState($g_hBtn_XD_StreakDetail, $GUI_ENABLE)
 
 	GUICtrlSetState($g_hCheckbox_DailyShield, $iState)
 	GUICtrlSetState($g_hInput_DailyTarget, $iState)
@@ -1601,10 +1635,16 @@ Func WM_COMMAND_Handler($hWnd, $iMsg, $wParam, $lParam)
 		EndSwitch
 	ElseIf $iCmd = 0 Then
 		If $iCtrlID == $g_hRadio_XD_RealKeep Or $iCtrlID == $g_hRadio_XD_DemoKeep Or _
+				$iCtrlID == $g_hRadio_XD_MultiRow Or $iCtrlID == $g_hRadio_XD_SingleRow Or _
 				$iCtrlID == $g_hCheckbox_XD_AntiKick Or $iCtrlID == $g_hCheckbox_XD_ShareDebt Or $iCtrlID == $g_hCheckbox_XD_AutoResetDebt Then
+			If $iCtrlID == $g_hRadio_XD_SingleRow And GUICtrlRead($g_hRadio_XD_SingleRow) == $GUI_CHECKED Then
+				$g_iCurrentTier = 1
+			EndIf
 			$g_bNeedAutoSave = True
 			$g_hAutoSaveTimer = TimerInit()
 			_UpdateXocDiaGridUI()
+		ElseIf $iCtrlID == $g_hBtn_XD_StreakDetail Then
+			AdlibRegister("_ShowStreakCacheDetail_Deferred", 50)
 		EndIf
 	EndIf
 	Return $GUI_RUNDEFMSG
@@ -1647,6 +1687,17 @@ Func _StartProcess()
 	; [LUỒNG 1]: XÓC ĐĨA VIP - QUÉT POPUP LASER & MA TRẬN ĐA TẦNG
 	; =========================================================================
 	If GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED Then
+		For $i = 1 To 10
+			$g_aTierStep[$i] = 1
+			$g_aXD_RowLoss[$i] = 0
+		Next
+		$g_iCurrentTier = 1
+		$g_iXD_LossStreakInRow = 0
+		$g_iXD_WinStreakInRow = 0
+		$g_bXD_SplitUsed = False
+		$g_iXD_CurLossStreak_Cache = 0
+		_UpdateXocDiaGridUI()
+
 		_UpdateStatus("🚀 XÓC ĐĨA VIP: Khóa tia Laser chờ Popup kết quả...")
 		While $g_bIsRunning
 			_ProcessGUIMessages()
@@ -1671,12 +1722,16 @@ Func _StartProcess()
 			Local $aAction = _DecideNextAction()
 			If $aAction[0] == "BET" Then
 				Local $sBetOn = $aAction[1]
-				$g_fCurrentBet = $aAction[2] ; Tiền tính số liệu chuẩn theo Ma Trận (Không dính tiền giữ bàn)
+				$g_fCurrentBet = $aAction[2] ; Tiền tính số liệu chuẩn theo Ma Trận
+				Local $bIsDemoNow = (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED)
 
-				; Nếu ván này không cần rải phỉnh thật xuống mặt bàn
+				; Nếu không cần rải phỉnh thật xuống mặt bàn
 				If $g_fTableClickBet <= 0 Then
 					$g_sLastBetOn = $sBetOn
 				Else
+					; Ở chế độ Demo, luôn khóa cửa cược trước để không bao giờ bị kẹt/bỏ lỡ nhịp Ma Trận
+					If $bIsDemoNow Then $g_sLastBetOn = $sBetOn
+
 					Local $bTimerFound = False
 					Local $iWaitTimer = TimerInit()
 					While $g_bIsRunning
@@ -1693,12 +1748,20 @@ Func _StartProcess()
 						Local $fChipToClick = $g_fTableClickBet
 						_PerformBet($sBetOn, $fChipToClick)
 						$g_fTableClickBet = $fChipToClick
-						; Chỉ đồng bộ lại theo chip thực tế nếu đang Đánh Thật ở các bước có tiền (> 0đ)
-						If GUICtrlRead($g_hRadio_XD_RealKeep) == $GUI_CHECKED And $g_fCurrentBet > 0 Then
+						If Not $bIsDemoNow And $g_fCurrentBet > 0 Then
 							$g_fCurrentBet = $fChipToClick
 						EndIf
 					Else
-						_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
+						If $bIsDemoNow Then
+							$g_fTableClickBet = 0
+							$g_iXD_NoBetCount = 0
+							_UpdateStatus("⚠️ [DEMO] Không thấy đèn Giờ Cược để rải mồi giữ ghế, vẫn tính nhịp Ma Trận bình thường.")
+						Else
+							; Nếu đang ở bước Nháp 0đ mà chỉ lỡ nhịp giữ ghế thì vẫn chấm kết quả bước Nháp
+							If $g_fCurrentBet <= 0 Then $g_sLastBetOn = $sBetOn
+							$g_fTableClickBet = 0
+							_UpdateStatus("⛔ Bỏ lỡ ván: Hết giờ cược.")
+						EndIf
 					EndIf
 				EndIf
 			EndIf
@@ -2610,6 +2673,10 @@ Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 	Local $sKhung4Tay = StringRight($sHist, 4)
 	_UpdateStatus("🎯 [PHÂN TÍCH] Khuôn 4 tay: [" & $sKhung4Tay & "] -> Đánh [" & $sTarget & "]")
 
+	; Nếu chọn Đi 1 hàng duy nhất -> Luôn khóa chặt ở Hàng 1 (H1)
+	Local $bIsSingleRow = (GUICtrlRead($g_hRadio_XD_SingleRow) == $GUI_CHECKED)
+	If $bIsSingleRow Then $g_iCurrentTier = 1
+
 	Local $iCurrentStep = $g_aTierStep[$g_iCurrentTier]
 	Local $iMaxLimit = $g_aXD_MaxStepsPerRow[$g_iCurrentTier]
 
@@ -2617,6 +2684,7 @@ Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 		_UpdateStatus("⚠️ [CẮT LỖ] Chạm mốc kịch kim " & $iMaxLimit & " bước của Hàng " & $g_iCurrentTier & "! Reset toàn bộ về H1 B1.")
 		For $i = 1 To 10
 			$g_aTierStep[$i] = 1
+			$g_aXD_RowLoss[$i] = 0
 		Next
 		$g_iCurrentTier = 1
 		$iCurrentStep = 1
@@ -2624,6 +2692,7 @@ Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 		$g_iXD_WinStreakInRow = 0
 		$g_fXD_CycleProfit = 0
 		$g_fXD_AmortizePool = 0
+		$g_bXD_SplitUsed = False
 	EndIf
 
 	Local $bIsDemoMode = (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED)
@@ -2660,25 +2729,26 @@ Func _Logic_XocDia_5Hang_VIP($sHistoryRaw)
 	EndIf
 
 	Local $sKeepStatus = $bIsKeepTable ? ("Nghỉ: " & ($g_iXD_NoBetCount + 1) & "/" & Number(GUICtrlRead($g_hInput_XD_AntiKick)) & " ván") : "Tắt giữ bàn"
+	Local $sRowModeTag = $bIsSingleRow ? "1 HÀNG H1" : ("HÀNG " & $g_iCurrentTier)
 
 	If $bIsDemoMode Then
 		If $bIsAntiKickBet Then
 			_UpdateStatus("🛡️ [DEMO - GIỮ BÀN] Rải mồi " & _FormatNumber($g_fTableClickBet) & "đ giữ ghế (Không tính số liệu) | Số liệu Demo: " & _FormatNumber($iStatsBet) & "đ vào [" & $sTarget & "]")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [DEMO - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ (Bỏ qua) | Số liệu: " & _FormatNumber($iStatsBet) & "đ [" & $sTarget & "]")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $iCurrentStep & " [DEMO - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ | Số liệu: " & _FormatNumber($iStatsBet) & "đ [" & $sTarget & "]")
 		Else
-			_UpdateStatus("🧪 [ĐÁNH DEMO] HÀNG " & $g_iCurrentTier & " (B" & $iCurrentStep & ") -> Số liệu tính: " & _FormatNumber($iStatsBet) & "đ vào [" & $sTarget & "] (" & $sKeepStatus & ")")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH DEMO]" & @CRLF & "🧪 Số liệu tính: " & _FormatNumber($iStatsBet) & "đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
+			_UpdateStatus("🧪 [ĐÁNH DEMO] " & $sRowModeTag & " (B" & $iCurrentStep & ") -> Số liệu tính: " & _FormatNumber($iStatsBet) & "đ vào [" & $sTarget & "] (" & $sKeepStatus & ")")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $iCurrentStep & " [ĐÁNH DEMO]" & @CRLF & "🧪 Số liệu tính: " & _FormatNumber($iStatsBet) & "đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
 		EndIf
 	Else
 		If $bIsAntiKickBet Then
 			_UpdateStatus("🛡️ [THẬT - GIỮ BÀN] Đã nghỉ " & $g_iXD_NoBetCount & " ván -> Rải mồi " & _FormatNumber($g_fTableClickBet) & "đ giữ ghế vào [" & $sTarget & "] (Không tính vào số liệu)!")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [THẬT - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "] (Số liệu: 0đ)")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $iCurrentStep & " [THẬT - GIỮ BÀN]" & @CRLF & "🛡️ Rải giữ ghế: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "] (Số liệu: 0đ)")
 		ElseIf $g_fTableClickBet > 0 Then
-			_UpdateStatus("💸 [ĐÁNH THẬT] HÀNG " & $g_iCurrentTier & " (B" & $iCurrentStep & ") -> Cược " & _FormatNumber($g_fTableClickBet) & "đ vào [" & $sTarget & "]")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [ĐÁNH THẬT]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "]")
+			_UpdateStatus("💸 [ĐÁNH THẬT] " & $sRowModeTag & " (B" & $iCurrentStep & ") -> Cược " & _FormatNumber($g_fTableClickBet) & "đ vào [" & $sTarget & "]")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $iCurrentStep & " [ĐÁNH THẬT]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($g_fTableClickBet) & "đ VÀO [" & $sTarget & "]")
 		Else
-			_UpdateStatus("💸 [ĐÁNH NHÁP] HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " (0đ) vào [" & $sTarget & "] (" & $sKeepStatus & ")")
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $iCurrentStep & " [BƯỚC NHÁP]" & @CRLF & "💰 Đánh nháp 0đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
+			_UpdateStatus("💸 [ĐÁNH NHÁP] " & $sRowModeTag & " - B" & $iCurrentStep & " (0đ) vào [" & $sTarget & "] (" & $sKeepStatus & ")")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $iCurrentStep & " [BƯỚC NHÁP]" & @CRLF & "💰 Đánh nháp 0đ VÀO [" & $sTarget & "] (" & $sKeepStatus & ")")
 		EndIf
 	EndIf
 
@@ -2688,15 +2758,21 @@ EndFunc   ;==>_Logic_XocDia_5Hang_VIP
 
 Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 	Local $bIsWin = ($sActualResult == $sBetOn)
-	Local $iTargetRows = Number(GUICtrlRead($g_hInput_XD_MaxRows))
+	Local $bIsSingleRow = (GUICtrlRead($g_hRadio_XD_SingleRow) == $GUI_CHECKED)
+
+	; 0. GHI NHẬN THỐNG KÊ BỘ NHỚ ĐỆM CHUỖI THUA THÔNG TỪ TRƯỚC TỚI GIỜ
+	_RecordLossStreakCache($bIsWin)
+
+	Local $iTargetRows = $bIsSingleRow ? 1 : Number(GUICtrlRead($g_hInput_XD_MaxRows))
 	If $iTargetRows < 1 Then $iTargetRows = 1
 	If $iTargetRows > 10 Then $iTargetRows = 10
+	If $bIsSingleRow Then $g_iCurrentTier = 1
 
 	Local $iJumpLoss = Number(GUICtrlRead($g_hInput_XD_JumpLoss))
 	If $iJumpLoss < 1 Then $iJumpLoss = 1
 	Local $iJumpWin = Number(GUICtrlRead($g_hInput_XD_JumpWin))
 	If $iJumpWin < 0 Then $iJumpWin = 0
-	Local $bShareDebt = (GUICtrlRead($g_hCheckbox_XD_ShareDebt) == $GUI_CHECKED)
+	Local $bShareDebt = (Not $bIsSingleRow) And (GUICtrlRead($g_hCheckbox_XD_ShareDebt) == $GUI_CHECKED)
 
 	; 1. Bộ đếm chống văng bàn: Chỉ reset về 0 khi ván vừa rồi CÓ RẢI PHỈNH THẬT xuống mặt bàn
 	If $g_fTableClickBet > 0 Then
@@ -2713,95 +2789,141 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		$aVirt[$r] = ($r <= $aVirtualParsed[0]) ? Number($aVirtualParsed[$r]) : 0
 	Next
 
-	; 2. Tính lãi/lỗ chu kỳ & trích Quỹ Gọt Nợ theo đúng số tiền tính số liệu ($g_fCurrentBet)
+	Local $iJustWonRow = 0 ; Khóa bảo vệ Hàng vừa thắng không bị gán đè nợ trong cùng ván
+
+	; 2. TÍNH NỢ THỰC TẾ TỪNG HÀNG & QUỸ GỌT NỢ CHUẨN TOÁN HỌC
 	If $bIsWin Then
+		$iJustWonRow = $g_iCurrentTier
 		Local $fWinAmount = ($g_fCurrentBet * 0.95)
 		$g_fXD_CycleProfit += $fWinAmount
 
-		If $bShareDebt And $fWinAmount > 0 Then
-			Local $bHasHighDebt = False
+		Local $fNetRowProfit = $fWinAmount - $g_aXD_RowLoss[$g_iCurrentTier]
+		$g_aXD_RowLoss[$g_iCurrentTier] = 0
+
+		If $bShareDebt And $fNetRowProfit > 0 Then
+			Local $bHasOtherDebt = False
 			For $r = 1 To $iTargetRows
-				If $g_aTierStep[$r] >= ($aVirt[$r] + 3) Then
-					$bHasHighDebt = True
+				If $r <> $g_iCurrentTier And $g_aXD_RowLoss[$r] > 0 Then
+					$bHasOtherDebt = True
 					ExitLoop
 				EndIf
 			Next
-			If $bHasHighDebt And $g_aTierStep[$g_iCurrentTier] <= ($aVirt[$g_iCurrentTier] + 2) Then
-				$g_fXD_AmortizePool += ($fWinAmount * 0.5)
+			If $bHasOtherDebt Then
+				$g_fXD_AmortizePool += $fNetRowProfit
 			EndIf
 		EndIf
 	Else
 		$g_fXD_CycleProfit -= $g_fCurrentBet
+		$g_aXD_RowLoss[$g_iCurrentTier] += $g_fCurrentBet
 	EndIf
 
 	If Not $bShareDebt Then $g_fXD_AmortizePool = 0
 
-	; 3. TẦNG 1: XỬ LÝ THẮNG / THUA & ĐIỀU KIỆN ĐỐI XỨNG (THUA THÔNG NHẢY / ĂN THÔNG NHẢY)
-	If $bIsWin Then
-		$g_aTierStep[$g_iCurrentTier] = 1
-		$g_iXD_WinStreakInRow += 1
-		$g_iXD_LossStreakInRow = 0
-
-		If $iJumpWin > 0 And $g_iXD_WinStreakInRow >= $iJumpWin Then
-			$g_iCurrentTier = Mod($g_iCurrentTier, $iTargetRows) + 1
-			$g_iXD_WinStreakInRow = 0
+	; 3. TẦNG 1: XỬ LÝ THẮNG / THUA (ĐI 1 HÀNG DUY NHẤT HOẶC GẤP HÀNG LUÂN PHIÊN)
+	If $bIsSingleRow Then
+		; CHẾ ĐỘ ĐI 1 HÀNG DUY NHẤT (H1): Thắng reset về B1 ngay lập tức, Thua gấp lên bước tiếp theo trên H1
+		$g_iCurrentTier = 1
+		If $bIsWin Then
+			$g_aTierStep[1] = 1
+			$g_aXD_RowLoss[1] = 0
+			$g_iXD_WinStreakInRow += 1
 			$g_iXD_LossStreakInRow = 0
-			_UpdateStatus("🎉 [KẾT QUẢ] Ăn thông đủ " & $iJumpWin & " tay! -> [Nhảy Hàng] Chuyển sang Hàng " & $g_iCurrentTier & " (B" & $g_aTierStep[$g_iCurrentTier] & ").")
+			$g_fXD_CycleProfit = 0
+			_UpdateStatus("🎉 [1 HÀNG DUY NHẤT] Húp! -> Reset Hàng 1 về lại B1 ngay lập tức!")
 		Else
-			_UpdateStatus("🛡️ [KẾT QUẢ] Húp! (Ăn thông " & $g_iXD_WinStreakInRow & ($iJumpWin > 0 ? "/" & $iJumpWin : "") & ") -> Hàng " & $g_iCurrentTier & " về B1 đứng yên làm khiên!")
+			$g_aTierStep[1] += 1
+			$g_iXD_LossStreakInRow += 1
+			$g_iXD_WinStreakInRow = 0
+			_UpdateStatus("⏳ [1 HÀNG DUY NHẤT] Gãy (Thua thông " & $g_iXD_CurLossStreak_Cache & " tay)! -> Hàng 1 gấp lên Bước " & $g_aTierStep[1] & ".")
 		EndIf
 	Else
-		$g_aTierStep[$g_iCurrentTier] += 1
-		$g_iXD_LossStreakInRow += 1
-		$g_iXD_WinStreakInRow = 0
-
-		If $g_iXD_LossStreakInRow >= $iJumpLoss Then
-			$g_iCurrentTier = Mod($g_iCurrentTier, $iTargetRows) + 1
+		; CHẾ ĐỘ GẤP THEO HÀNG LUÂN PHIÊN
+		If $bIsWin Then
+			$g_aTierStep[$g_iCurrentTier] = 1
+			$g_aXD_RowLoss[$g_iCurrentTier] = 0
+			$g_iXD_WinStreakInRow += 1
 			$g_iXD_LossStreakInRow = 0
-			$g_iXD_WinStreakInRow = 0
-			_UpdateStatus("🔄 [KẾT QUẢ] Thua thông đủ " & $iJumpLoss & " tay! -> [Nhảy Hàng] Chuyển sang Hàng " & $g_iCurrentTier & " (Đang ở Bước " & $g_aTierStep[$g_iCurrentTier] & ").")
+
+			If $iJumpWin > 0 And $g_iXD_WinStreakInRow >= $iJumpWin Then
+				$g_iCurrentTier = Mod($g_iCurrentTier, $iTargetRows) + 1
+				$g_iXD_WinStreakInRow = 0
+				$g_iXD_LossStreakInRow = 0
+				_UpdateStatus("🎉 [KẾT QUẢ] Ăn thông đủ " & $iJumpWin & " tay! -> [Nhảy Hàng] Chuyển sang Hàng " & $g_iCurrentTier & " (B" & $g_aTierStep[$g_iCurrentTier] & ").")
+			Else
+				_UpdateStatus("🛡️ [KẾT QUẢ] Húp! -> Hàng " & $g_iCurrentTier & " đã RESET về B1 đứng yên làm khiên!")
+			EndIf
 		Else
-			_UpdateStatus("⏳ [KẾT QUẢ] Gãy (Thua thông " & $g_iXD_LossStreakInRow & "/" & $iJumpLoss & " tay)! -> Trụ lại Hàng " & $g_iCurrentTier & " lên Bước " & $g_aTierStep[$g_iCurrentTier] & ".")
+			$g_aTierStep[$g_iCurrentTier] += 1
+			$g_iXD_LossStreakInRow += 1
+			$g_iXD_WinStreakInRow = 0
+
+			If $g_iXD_LossStreakInRow >= $iJumpLoss Then
+				$g_iCurrentTier = Mod($g_iCurrentTier, $iTargetRows) + 1
+				$g_iXD_LossStreakInRow = 0
+				$g_iXD_WinStreakInRow = 0
+				_UpdateStatus("🔄 [KẾT QUẢ] Thua thông đủ " & $iJumpLoss & " tay! -> [Nhảy Hàng] Chuyển sang Hàng " & $g_iCurrentTier & " (Đang ở Bước " & $g_aTierStep[$g_iCurrentTier] & ").")
+			Else
+				_UpdateStatus("⏳ [KẾT QUẢ] Gãy (Thua thông " & $g_iXD_LossStreakInRow & "/" & $iJumpLoss & " tay)! -> Trụ lại Hàng " & $g_iCurrentTier & " lên Bước " & $g_aTierStep[$g_iCurrentTier] & ".")
+			EndIf
 		EndIf
 	EndIf
 
-	; 4. TẦNG 2 & 3: CHẺ ĐÔI ĐỈNH NỢ & GỌT NỢ BẰNG QUỸ LÃI PHỤ (CHỈ CHẠY KHI BẬT ☑ SAN SẺ NỢ)
+	; 4. TẦNG 2 & 3: CHẺ ĐÔI ĐỈNH NỢ & GỌT NỢ (CHỈ CHẠY Ở CHẾ ĐỘ LUÂN PHIÊN KHI BẬT SAN SẺ NỢ)
 	If $bShareDebt And $iTargetRows >= 2 Then
-		; TẦNG 2: CHẺ ĐÔI ĐỈNH NỢ (1 Hàng chạm Bước 5 tiền thật + 1 Hàng Rảnh -> 2 Hàng Bước 4 tiền thật)
-		For $rHigh = 1 To $iTargetRows
-			Local $iRealStepHigh = $g_aTierStep[$rHigh] - $aVirt[$rHigh]
-			If $iRealStepHigh >= 5 Then
-				For $rLow = 1 To $iTargetRows
-					If $rLow == $rHigh Then ContinueLoop
-					Local $iRealStepLow = $g_aTierStep[$rLow] - $aVirt[$rLow]
-					If $iRealStepLow <= 1 Then
-						Local $iNewRealStep = $iRealStepHigh - 1
-						$g_aTierStep[$rHigh] = $aVirt[$rHigh] + $iNewRealStep
-						$g_aTierStep[$rLow] = $aVirt[$rLow] + $iNewRealStep
-						_UpdateStatus("⚡ [SAN SẺ NỢ - CHẺ ĐÔI] San bằng Hàng " & $rHigh & " với Hàng " & $rLow & " -> Cả 2 cùng lùi về Bước tiền thật " & $iNewRealStep & "!")
-						ExitLoop
-					EndIf
-				Next
-			EndIf
-		Next
+		; TẦNG 2: CHẺ ĐÔI ĐỈNH NỢ (Bảo vệ tuyệt đối hàng vừa thắng $iJustWonRow không bị gán nợ lại ngay)
+		If Not $g_bXD_SplitUsed Then
+			For $rHigh = 1 To $iTargetRows
+				Local $iRealStepHigh = $g_aTierStep[$rHigh] - $aVirt[$rHigh]
+				If $iRealStepHigh == 5 Then
+					For $rLow = 1 To $iTargetRows
+						If $rLow == $rHigh Or $rLow == $iJustWonRow Then ContinueLoop
+						Local $iRealStepLow = $g_aTierStep[$rLow] - $aVirt[$rLow]
+						If $iRealStepLow <= 1 And $g_aXD_RowLoss[$rLow] == 0 Then
+							Local $iNewRealStep = 4 ; Lùi về Bước 4 tiền thật (8x)
+							$g_aTierStep[$rHigh] = $aVirt[$rHigh] + $iNewRealStep
+							$g_aTierStep[$rLow] = $aVirt[$rLow] + $iNewRealStep
 
-		; TẦNG 3: GỌT NỢ TỪNG BẬC BẰNG QUỸ LÃI TÍCH LŨY
-		If $g_fXD_AmortizePool > 0 Then
-			Local $iMaxDebtRow = 1
-			For $i = 2 To $iTargetRows
-				If ($g_aTierStep[$i] - $aVirt[$i]) > ($g_aTierStep[$iMaxDebtRow] - $aVirt[$iMaxDebtRow]) Then $iMaxDebtRow = $i
+							Local $fHalfDebt = $g_aXD_RowLoss[$rHigh] / 2
+							$g_aXD_RowLoss[$rHigh] = $fHalfDebt
+							$g_aXD_RowLoss[$rLow] = $fHalfDebt
+							$g_bXD_SplitUsed = True
+
+							_UpdateStatus("⚡ [SAN SẺ NỢ - CHẺ ĐÔI] Chia nợ Hàng " & $rHigh & " sang Hàng " & $rLow & " (Mỗi hàng gánh " & _FormatNumber($fHalfDebt) & "đ ở Bước tiền thật " & $iNewRealStep & ")!")
+							ExitLoop 2
+						EndIf
+					Next
+				EndIf
+			Next
+		EndIf
+
+		; TẦNG 3: GỌT NỢ TỪNG BẬC BẰNG QUỸ LÃI RÒNG THỰC TẾ
+		While $g_fXD_AmortizePool > 0
+			Local $iMaxDebtRow = 0
+			Local $iMaxRealStep = 0
+			For $i = 1 To $iTargetRows
+				Local $iRealSt = $g_aTierStep[$i] - $aVirt[$i]
+				If $iRealSt > $iMaxRealStep And $g_aXD_RowLoss[$i] > 0 Then
+					$iMaxRealStep = $iRealSt
+					$iMaxDebtRow = $i
+				EndIf
 			Next
 
-			Local $iHighStep = $g_aTierStep[$iMaxDebtRow]
-			If ($iHighStep - $aVirt[$iMaxDebtRow]) > 2 Then
+			If $iMaxDebtRow > 0 And $iMaxRealStep >= 2 Then
+				Local $iHighStep = $g_aTierStep[$iMaxDebtRow]
 				Local $fLastLostBet = $g_aXocDia_Seq[$iMaxDebtRow][$iHighStep - 1]
 				If $fLastLostBet > 0 And $g_fXD_AmortizePool >= $fLastLostBet Then
 					$g_fXD_AmortizePool -= $fLastLostBet
+					$g_aXD_RowLoss[$iMaxDebtRow] -= $fLastLostBet
+					If $g_aXD_RowLoss[$iMaxDebtRow] < 0 Then $g_aXD_RowLoss[$iMaxDebtRow] = 0
 					$g_aTierStep[$iMaxDebtRow] -= 1
-					_UpdateStatus("🛡️ [SAN SẺ NỢ - GỌT NỢ] Quỹ lãi phụ đủ bù -> Hạ nợ Hàng " & $iMaxDebtRow & " từ B" & $iHighStep & " xuống B" & $g_aTierStep[$iMaxDebtRow] & "!")
+					_UpdateStatus("🛡️ [GỌT NỢ THỰC TẾ] Dùng " & _FormatNumber($fLastLostBet) & "đ lãi ròng -> Hạ nợ Hàng " & $iMaxDebtRow & " từ B" & $iHighStep & " xuống B" & $g_aTierStep[$iMaxDebtRow] & "!")
+				Else
+					ExitLoop
 				EndIf
+			Else
+				ExitLoop
 			EndIf
-		EndIf
+		WEnd
 	EndIf
 
 	; 5. Kiểm tra kịch kim từng hàng
@@ -2810,43 +2932,51 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		_UpdateStatus("⚠️ [CẮT LỖ TOÀN CỤC] Hàng " & $g_iCurrentTier & " chạm kịch kim " & $iMaxLimit & " bước! Reset toàn bộ về B1.")
 		For $i = 1 To 10
 			$g_aTierStep[$i] = 1
+			$g_aXD_RowLoss[$i] = 0
 		Next
 		$g_iCurrentTier = 1
 		$g_iXD_LossStreakInRow = 0
 		$g_iXD_WinStreakInRow = 0
 		$g_fXD_CycleProfit = 0
 		$g_fXD_AmortizePool = 0
+		$g_bXD_SplitUsed = False
 	EndIf
 
 	; 6. Khóa Chốt Lãi Chu Kỳ (Tự xóa sạch nợ toàn bảng khi đạt mục tiêu lãi vòng)
 	Local $bAllClean = False
-	If GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED Then
+	If Not $bIsSingleRow And GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED Then
 		Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_XD_TargetProfit), "\D", ""))
 		If $fTarget > 0 And $g_fXD_CycleProfit >= $fTarget Then
 			_UpdateStatus("🎉 [CHỐT LỜI VÒNG] Lãi chu kỳ đạt +" & _FormatNumber($g_fXD_CycleProfit) & "đ! XÓA SẠCH NỢ VỀ B1!")
 			For $i = 1 To 10
 				$g_aTierStep[$i] = 1
+				$g_aXD_RowLoss[$i] = 0
 			Next
 			$g_iCurrentTier = 1
 			$g_iXD_LossStreakInRow = 0
 			$g_iXD_WinStreakInRow = 0
 			$g_fXD_CycleProfit = 0
 			$g_fXD_AmortizePool = 0
+			$g_bXD_SplitUsed = False
 			$bAllClean = True
 		EndIf
 	EndIf
 
+	; 7. Khi tất cả các hàng đã tự về B1 và không còn âm chu kỳ -> Mở khóa cho chu kỳ mới
 	If Not $bAllClean Then
 		$bAllClean = True
 		For $i = 1 To $iTargetRows
-			If $g_aTierStep[$i] > ($aVirt[$i] + 1) Then
+			If $g_aTierStep[$i] > ($aVirt[$i] + 1) Or $g_aXD_RowLoss[$i] > 0 Then
 				$bAllClean = False
 				ExitLoop
 			EndIf
 		Next
 		If $bAllClean Then
-			$g_fXD_CycleProfit = 0
-			$g_fXD_AmortizePool = 0
+			$g_bXD_SplitUsed = False
+			If $g_fXD_CycleProfit >= 0 Then
+				$g_fXD_CycleProfit = 0
+				$g_fXD_AmortizePool = 0
+			EndIf
 		EndIf
 	EndIf
 
@@ -2857,14 +2987,20 @@ Func _UpdateXocDiaGridUI()
 	If Not $g_bIsRunning Then
 		$g_iXD_LossStreakInRow = 0
 		$g_iXD_WinStreakInRow = 0
+		$g_bXD_SplitUsed = False
+		For $i = 1 To 10
+			$g_aXD_RowLoss[$i] = 0
+		Next
 	EndIf
 
 	Local $sCustomSeq = StringStripWS(GUICtrlRead($g_hInput_XD_Seq), 8)
 	Local $aParsed = StringSplit($sCustomSeq, ",")
 
-	Local $iTargetRows = Number(GUICtrlRead($g_hInput_XD_MaxRows))
+	Local $bIsSingleRow = (GUICtrlRead($g_hRadio_XD_SingleRow) == $GUI_CHECKED)
+	Local $iTargetRows = $bIsSingleRow ? 1 : Number(GUICtrlRead($g_hInput_XD_MaxRows))
 	If $iTargetRows < 1 Then $iTargetRows = 1
 	If $iTargetRows > 10 Then $iTargetRows = 10
+	If $bIsSingleRow Then $g_iCurrentTier = 1
 
 	Local $fBaseBet = Number(StringRegExpReplace(GUICtrlRead($g_hInput_InitialBet), "\D", ""))
 	If $fBaseBet <= 0 Then $fBaseBet = 10000
@@ -2900,8 +3036,10 @@ Func _UpdateXocDiaGridUI()
 		Next
 	Next
 
+	Local $bIsXocDia = (GUICtrlRead($g_hCheckbox_XocDiaVIP) == $GUI_CHECKED)
+
 	For $c = 1 To 15
-		If $c <= $g_iDynamicMaxSteps Then
+		If $bIsXocDia And $c <= $g_iDynamicMaxSteps Then
 			GUICtrlSetState($g_aXD_Cols[$c], $GUI_SHOW)
 		Else
 			GUICtrlSetState($g_aXD_Cols[$c], $GUI_HIDE)
@@ -2909,7 +3047,7 @@ Func _UpdateXocDiaGridUI()
 	Next
 
 	For $r = 1 To 10
-		If $r <= $iTargetRows Then
+		If $bIsXocDia And $r <= $iTargetRows Then
 			GUICtrlSetState($g_aXD_Rows[$r], $GUI_SHOW)
 			For $c = 1 To 15
 				Local $iVal = $g_aXocDia_Seq[$r][$c]
@@ -2962,17 +3100,103 @@ Func _UpdateXocDiaGridUI()
 	Local $bIsDemoMode = (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED)
 	Local $bIsKeepTable = (GUICtrlRead($g_hCheckbox_XD_AntiKick) == $GUI_CHECKED)
 	Local $sKeepTag = $bIsKeepTable ? "CÓ GIỮ BÀN" : "TẮT GIỮ BÀN"
+	Local $sRowModeTag = $bIsSingleRow ? "1 HÀNG H1" : ("HÀNG " & $g_iCurrentTier)
 
 	If $bIsDemoMode Then
-		GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $g_aTierStep[$g_iCurrentTier] & " [DEMO - " & $sKeepTag & "]" & @CRLF & "🧪 Mô phỏng: " & _FormatNumber($iBetAmount) & "đ (Không thả chip)")
+		GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $g_aTierStep[$g_iCurrentTier] & " [DEMO - " & $sKeepTag & "]" & @CRLF & "🧪 Mô phỏng: " & _FormatNumber($iBetAmount) & "đ | Lãi vòng: " & _FormatNumber($g_fXD_CycleProfit) & "đ")
 	Else
 		If $iBetAmount > 0 Then
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $g_aTierStep[$g_iCurrentTier] & " [THẬT - " & $sKeepTag & "]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($iBetAmount) & "đ")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $g_aTierStep[$g_iCurrentTier] & " [THẬT - " & $sKeepTag & "]" & @CRLF & "💰 Sẵn sàng ném: " & _FormatNumber($iBetAmount) & "đ | Lãi vòng: " & _FormatNumber($g_fXD_CycleProfit) & "đ")
 		Else
-			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: HÀNG " & $g_iCurrentTier & " - BƯỚC " & $g_aTierStep[$g_iCurrentTier] & " [THẬT - " & $sKeepTag & "]" & @CRLF & "💰 Sẵn sàng: ĐÁNH NHÁP 0đ")
+			GUICtrlSetData($g_hLbl_XD_Status, "Trạng thái: " & $sRowModeTag & " - B" & $g_aTierStep[$g_iCurrentTier] & " [THẬT - " & $sKeepTag & "]" & @CRLF & "💰 Đánh nháp 0đ | Lãi vòng: " & _FormatNumber($g_fXD_CycleProfit) & "đ")
 		EndIf
 	EndIf
+
+	_UpdateStreakCacheUI()
 EndFunc   ;==>_UpdateXocDiaGridUI
+
+; --- HỆ THỐNG THỐNG KÊ BỘ NHỚ ĐỆM CHUỖI THUA THÔNG TỪ TRƯỚC TỚI GIỜ ---
+Func _RecordLossStreakCache($bIsWin)
+	If $bIsWin Then
+		$g_iXD_CurLossStreak_Cache = 0
+	Else
+		$g_iXD_CurLossStreak_Cache += 1
+		Local $k = $g_iXD_CurLossStreak_Cache
+
+		; Khi chuỗi thua tăng từ (k-1) lên k: Chuyển 1 lượt từ mốc x(k-1) lên mốc x(k) để mỗi dây thua chỉ tính ở đỉnh cao nhất
+		If $k > 1 Then
+			Local $iPrevCount = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "x" & ($k - 1), "0"))
+			If $iPrevCount > 0 Then
+				IniWrite($g_sStreakCacheFile, "LossStreakCache", "x" & ($k - 1), $iPrevCount - 1)
+			EndIf
+		EndIf
+
+		Local $iCurCount = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "x" & $k, "0"))
+		IniWrite($g_sStreakCacheFile, "LossStreakCache", "x" & $k, $iCurCount + 1)
+
+		Local $iMaxEver = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "MaxStreak", "0"))
+		If $k > $iMaxEver Then
+			IniWrite($g_sStreakCacheFile, "LossStreakCache", "MaxStreak", $k)
+		EndIf
+	EndIf
+	_UpdateStreakCacheUI()
+EndFunc   ;==>_RecordLossStreakCache
+
+Func _UpdateStreakCacheUI()
+	Local $iMaxEver = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "MaxStreak", "0"))
+	Local $sTopList = ""
+
+	; Ưu tiên hiển thị từ mức thua thông cao nhất trở xuống (ví dụ x10, x9, x8, x7...)
+	For $i = 25 To 1 Step -1
+		Local $iCnt = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "x" & $i, "0"))
+		If $iCnt > 0 Then
+			$sTopList &= "x" & $i & ":" & $iCnt & " | "
+		EndIf
+	Next
+
+	If $sTopList == "" Then
+		$sTopList = "Chưa có dữ liệu thua thông"
+	Else
+		$sTopList = StringTrimRight($sTopList, 3)
+	EndIf
+
+	GUICtrlSetData($g_hLbl_XD_StreakStats, "🔥 Thua thông hiện tại: x" & $g_iXD_CurLossStreak_Cache & " | Kỷ lục: x" & $iMaxEver & @CRLF & "📊 Bộ nhớ: " & $sTopList)
+EndFunc   ;==>_UpdateStreakCacheUI
+
+Func _ShowStreakCacheDetail_Deferred()
+	AdlibUnRegister("_ShowStreakCacheDetail_Deferred")
+	Local $iMaxEver = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "MaxStreak", "0"))
+	Local $sDetail = "📊 THỐNG KÊ BỘ NHỚ ĐỆM THUA THÔNG (TỪ TRƯỚC TỚI GIỜ)" & @CRLF
+	$sDetail &= "==========================================" & @CRLF
+	$sDetail &= "🔥 Chuỗi thua thông hiện tại: x" & $g_iXD_CurLossStreak_Cache & @CRLF
+	$sDetail &= "🏆 Đỉnh thua thông cao nhất kỷ lục: x" & $iMaxEver & @CRLF
+	$sDetail &= "------------------------------------------" & @CRLF
+
+	Local $bHasData = False
+	For $i = 25 To 1 Step -1
+		Local $iCnt = Number(IniRead($g_sStreakCacheFile, "LossStreakCache", "x" & $i, "0"))
+		If $iCnt > 0 Then
+			$sDetail &= "• Thua thông x" & $i & " :  " & $iCnt & " lần" & @CRLF
+			$bHasData = True
+		EndIf
+	Next
+
+	If Not $bHasData Then
+		$sDetail &= "(Hiện chưa có dữ liệu chuỗi thua nào được ghi nhận)" & @CRLF
+	EndIf
+
+	$sDetail &= "==========================================" & @CRLF
+	$sDetail &= "👉 Bấm [NO] để Đóng và Giữ nguyên bộ nhớ đệm." & @CRLF
+	$sDetail &= "👉 Bấm [YES] nếu bạn muốn XÓA LÀM MỚI toàn bộ thống kê về 0."
+
+	Local $iAns = MsgBox(36 + 262144, "Bộ Nhớ Đệm Thua Thông", $sDetail, 0, $g_hGUI)
+	If $iAns == 6 Then
+		FileDelete($g_sStreakCacheFile)
+		$g_iXD_CurLossStreak_Cache = 0
+		_UpdateStreakCacheUI()
+		MsgBox(64 + 262144, "Đã Xóa", "Đã làm mới toàn bộ bộ nhớ đệm thống kê thua thông về 0!", 0, $g_hGUI)
+	EndIf
+EndFunc   ;==>_ShowStreakCacheDetail_Deferred
 
 Func _SwitchLimit_VIP($sTargetLimit)
 	If $g_sCurrentLimitState == $sTargetLimit Then Return
@@ -3765,6 +3989,10 @@ Func _LoadSelectedProfile($sProfileName)
 	GUICtrlSetData($g_hInput_XD_JumpLoss, IniRead($g_sIniPath, $sSection, "XD_JumpLoss", "1"))
 	GUICtrlSetData($g_hInput_XD_JumpWin, IniRead($g_sIniPath, $sSection, "XD_JumpWin", "0"))
 
+	Local $bIsSingleRow = (IniRead($g_sIniPath, $sSection, "XD_SingleRow", "0") == "1")
+	GUICtrlSetState($g_hRadio_XD_SingleRow, $bIsSingleRow ? $GUI_CHECKED : $GUI_UNCHECKED)
+	GUICtrlSetState($g_hRadio_XD_MultiRow, $bIsSingleRow ? $GUI_UNCHECKED : $GUI_CHECKED)
+
 	Local $bIsDemoKeep = (IniRead($g_sIniPath, $sSection, "XD_DemoKeep", "0") == "1")
 	GUICtrlSetState($g_hRadio_XD_DemoKeep, $bIsDemoKeep ? $GUI_CHECKED : $GUI_UNCHECKED)
 	GUICtrlSetState($g_hRadio_XD_RealKeep, $bIsDemoKeep ? $GUI_UNCHECKED : $GUI_CHECKED)
@@ -3866,6 +4094,7 @@ Func _MasterSave($sProfileName, $bSilent = False)
 	IniWrite($g_sIniPath, $sSection, "XD_AntiKick", GUICtrlRead($g_hInput_XD_AntiKick))
 	IniWrite($g_sIniPath, $sSection, "XD_JumpLoss", GUICtrlRead($g_hInput_XD_JumpLoss))
 	IniWrite($g_sIniPath, $sSection, "XD_JumpWin", GUICtrlRead($g_hInput_XD_JumpWin))
+	IniWrite($g_sIniPath, $sSection, "XD_SingleRow", (GUICtrlRead($g_hRadio_XD_SingleRow) == $GUI_CHECKED) ? "1" : "0")
 	IniWrite($g_sIniPath, $sSection, "XD_DemoKeep", (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED) ? "1" : "0")
 	IniWrite($g_sIniPath, $sSection, "XD_AutoResetDebt", (GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED) ? "1" : "0")
 	IniWrite($g_sIniPath, $sSection, "XD_TargetProfit", GUICtrlRead($g_hInput_XD_TargetProfit))
