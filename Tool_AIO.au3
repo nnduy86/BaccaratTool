@@ -31,7 +31,7 @@ Opt("PixelCoordMode", 1)  ; 1 = Quét màu dùng Tọa độ tuyệt đối toà
 Global Const $g_sAppsScriptBaseURL = "https://script.google.com/macros/s/AKfycbzYsojeFPtUJNwNKMMclP7zuj9TO6XYyq16O02Pi-ef87OP2kYz3TV3kT02XBw_GXuE/exec"
 Global Const $g_sDevPassword       = "nmn12nntv21"
 Global Const $g_sToolName          = "Tool_AIO"
-Global Const $g_sVersion           = "6.1"
+Global Const $g_sVersion           = "6.2"
 Global Const $g_sCopyright         = "Thuộc Bản Quyền Telegram @nnduy2086"
 Global Const $g_sGithubVersionURL  = "https://raw.githubusercontent.com/nnduy86/BaccaratTool/main/version.txt"
 Global Const $g_sDownloadURL       = "https://github.com/nnduy86/BaccaratTool/raw/main/Tool_AIO.exe"
@@ -111,7 +111,7 @@ Global $g_hLbl_XD_JumpLoss, $g_hInput_XD_JumpLoss
 Global $g_hLbl_XD_JumpWin, $g_hInput_XD_JumpWin
 Global $g_hRadio_XD_RealKeep, $g_hRadio_XD_DemoKeep
 Global $g_hInput_XD_Seq, $g_hInput_XD_MaxRows, $g_hInput_XD_Virtual, $g_hInput_XD_AntiKick
-Global $g_hCheckbox_XD_AutoResetDebt, $g_hInput_XD_TargetProfit
+Global $g_hCheckbox_XD_AutoResetDebt, $g_hInput_XD_TargetProfit, $g_hCheckbox_XD_ShareDebt
 Global $g_aXocDiaGrid[11][16]        ; Ma trận 10 Hàng x 15 Cột
 Global $g_aXD_Rows[11], $g_aXD_Cols[16]
 Global $g_aXocDia_Seq[11][16]        ; Bộ nhớ tiền cược độc lập cho 10 Hàng x 15 Cột
@@ -739,14 +739,22 @@ Func _CreateGroup_XocDia_Grid()
 	$g_hInput_XD_MaxRows = GUICtrlCreateInput("5", $xOffset + 295, $yOffset, 35, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
 
-	; DÒNG 2: Tự xóa nợ khi đạt lãi vòng
+	; DÒNG 2: Tự xóa nợ khi đạt lãi vòng & Công tắc San sẻ nợ
 	$yOffset += 23
-	$g_hCheckbox_XD_AutoResetDebt = GUICtrlCreateCheckbox("Tự xóa nợ khi Lãi >=", $xOffset, $yOffset, 145, 18)
+	$g_hCheckbox_XD_AutoResetDebt = GUICtrlCreateCheckbox("Xóa nợ Lãi >=", $xOffset, $yOffset, 105, 18)
 	GUICtrlSetFont(-1, 8.5, 700)
 	GUICtrlSetColor(-1, 0x0000FF)
 	GUICtrlSetState(-1, $GUI_CHECKED)
-	$g_hInput_XD_TargetProfit = GUICtrlCreateInput("20.000", $xOffset + 145, $yOffset - 1, 185, 20)
+	GUICtrlSetTip(-1, "Tự động xóa sạch nợ toàn bảng về B1 khi lãi chu kỳ đạt mốc")
+
+	$g_hInput_XD_TargetProfit = GUICtrlCreateInput("20.000", $xOffset + 108, $yOffset - 1, 120, 20)
 	GUICtrlSetBkColor(-1, 0xE0FFFF)
+
+	$g_hCheckbox_XD_ShareDebt = GUICtrlCreateCheckbox("San sẻ nợ", $xOffset + 238, $yOffset, 95, 18)
+	GUICtrlSetFont(-1, 8.5, 700)
+	GUICtrlSetColor(-1, 0xFF00FF)
+	GUICtrlSetState(-1, $GUI_CHECKED)
+	GUICtrlSetTip(-1, "Bật/Tắt chế độ Chẻ đôi đỉnh nợ (B5->B4) và Gọt nợ bằng quỹ lãi phụ giữa các hàng")
 
 	; DÒNG 3: Nháp từng hàng & Công tắc Bật/Tắt Giữ bàn chống văng
 	$yOffset += 23
@@ -813,6 +821,7 @@ Func _ToggleXocDiaGridState($iState)
 	GUICtrlSetState($g_hInput_XD_MaxRows, $iState)
 	GUICtrlSetState($g_hCheckbox_XD_AutoResetDebt, $iState)
 	GUICtrlSetState($g_hInput_XD_TargetProfit, $iState)
+	GUICtrlSetState($g_hCheckbox_XD_ShareDebt, $iState)
 	GUICtrlSetState($g_hLbl_XD_Virtual, $iState)
 	GUICtrlSetState($g_hInput_XD_Virtual, $iState)
 	GUICtrlSetState($g_hCheckbox_XD_AntiKick, $iState)
@@ -864,7 +873,8 @@ Func _SetControlsState($bEnable)
 	GUICtrlSetState($g_hInput_XD_AntiKick, $iState)
 	GUICtrlSetState($g_hInput_XD_JumpLoss, $iState)
 	GUICtrlSetState($g_hInput_XD_JumpWin, $iState)
-	; Cho phép bật/tắt Giữ bàn và đổi Đánh Thật/Demo ngay cả khi Tool đang chạy
+	; Cho phép bật/tắt San sẻ nợ, Giữ bàn và đổi Đánh Thật/Demo ngay cả khi Tool đang chạy
+	GUICtrlSetState($g_hCheckbox_XD_ShareDebt, $GUI_ENABLE)
 	GUICtrlSetState($g_hCheckbox_XD_AntiKick, $GUI_ENABLE)
 	GUICtrlSetState($g_hRadio_XD_RealKeep, $GUI_ENABLE)
 	GUICtrlSetState($g_hRadio_XD_DemoKeep, $GUI_ENABLE)
@@ -1590,7 +1600,8 @@ Func WM_COMMAND_Handler($hWnd, $iMsg, $wParam, $lParam)
 				$g_hAutoSaveTimer = TimerInit()
 		EndSwitch
 	ElseIf $iCmd = 0 Then
-		If $iCtrlID == $g_hRadio_XD_RealKeep Or $iCtrlID == $g_hRadio_XD_DemoKeep Or $iCtrlID == $g_hCheckbox_XD_AntiKick Then
+		If $iCtrlID == $g_hRadio_XD_RealKeep Or $iCtrlID == $g_hRadio_XD_DemoKeep Or _
+				$iCtrlID == $g_hCheckbox_XD_AntiKick Or $iCtrlID == $g_hCheckbox_XD_ShareDebt Or $iCtrlID == $g_hCheckbox_XD_AutoResetDebt Then
 			$g_bNeedAutoSave = True
 			$g_hAutoSaveTimer = TimerInit()
 			_UpdateXocDiaGridUI()
@@ -2685,6 +2696,7 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 	If $iJumpLoss < 1 Then $iJumpLoss = 1
 	Local $iJumpWin = Number(GUICtrlRead($g_hInput_XD_JumpWin))
 	If $iJumpWin < 0 Then $iJumpWin = 0
+	Local $bShareDebt = (GUICtrlRead($g_hCheckbox_XD_ShareDebt) == $GUI_CHECKED)
 
 	; 1. Bộ đếm chống văng bàn: Chỉ reset về 0 khi ván vừa rồi CÓ RẢI PHỈNH THẬT xuống mặt bàn
 	If $g_fTableClickBet > 0 Then
@@ -2706,7 +2718,7 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		Local $fWinAmount = ($g_fCurrentBet * 0.95)
 		$g_fXD_CycleProfit += $fWinAmount
 
-		If $fWinAmount > 0 Then
+		If $bShareDebt And $fWinAmount > 0 Then
 			Local $bHasHighDebt = False
 			For $r = 1 To $iTargetRows
 				If $g_aTierStep[$r] >= ($aVirt[$r] + 3) Then
@@ -2721,6 +2733,8 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 	Else
 		$g_fXD_CycleProfit -= $g_fCurrentBet
 	EndIf
+
+	If Not $bShareDebt Then $g_fXD_AmortizePool = 0
 
 	; 3. TẦNG 1: XỬ LÝ THẮNG / THUA & ĐIỀU KIỆN ĐỐI XỨNG (THUA THÔNG NHẢY / ĂN THÔNG NHẢY)
 	If $bIsWin Then
@@ -2751,8 +2765,9 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		EndIf
 	EndIf
 
-	; 4. TẦNG 2: CHẺ ĐÔI ĐỈNH NỢ (1 Hàng chạm Bước 5 tiền thật + 1 Hàng Rảnh -> 2 Hàng Bước 4 tiền thật)
-	If $iTargetRows >= 2 Then
+	; 4. TẦNG 2 & 3: CHẺ ĐÔI ĐỈNH NỢ & GỌT NỢ BẰNG QUỸ LÃI PHỤ (CHỈ CHẠY KHI BẬT ☑ SAN SẺ NỢ)
+	If $bShareDebt And $iTargetRows >= 2 Then
+		; TẦNG 2: CHẺ ĐÔI ĐỈNH NỢ (1 Hàng chạm Bước 5 tiền thật + 1 Hàng Rảnh -> 2 Hàng Bước 4 tiền thật)
 		For $rHigh = 1 To $iTargetRows
 			Local $iRealStepHigh = $g_aTierStep[$rHigh] - $aVirt[$rHigh]
 			If $iRealStepHigh >= 5 Then
@@ -2763,14 +2778,14 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 						Local $iNewRealStep = $iRealStepHigh - 1
 						$g_aTierStep[$rHigh] = $aVirt[$rHigh] + $iNewRealStep
 						$g_aTierStep[$rLow] = $aVirt[$rLow] + $iNewRealStep
-						_UpdateStatus("⚡ [CHẺ ĐÔI ĐỈNH NỢ] San bằng Hàng " & $rHigh & " với Hàng " & $rLow & " -> Cả 2 cùng lùi về Bước tiền thật " & $iNewRealStep & "!")
+						_UpdateStatus("⚡ [SAN SẺ NỢ - CHẺ ĐÔI] San bằng Hàng " & $rHigh & " với Hàng " & $rLow & " -> Cả 2 cùng lùi về Bước tiền thật " & $iNewRealStep & "!")
 						ExitLoop
 					EndIf
 				Next
 			EndIf
 		Next
 
-		; 5. TẦNG 3: GỌT NỢ TỪNG BẬC BẰNG QUỸ LÃI TÍCH LŨY
+		; TẦNG 3: GỌT NỢ TỪNG BẬC BẰNG QUỸ LÃI TÍCH LŨY
 		If $g_fXD_AmortizePool > 0 Then
 			Local $iMaxDebtRow = 1
 			For $i = 2 To $iTargetRows
@@ -2783,13 +2798,13 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 				If $fLastLostBet > 0 And $g_fXD_AmortizePool >= $fLastLostBet Then
 					$g_fXD_AmortizePool -= $fLastLostBet
 					$g_aTierStep[$iMaxDebtRow] -= 1
-					_UpdateStatus("🛡️ [GỌT NỢ] Quỹ lãi phụ đủ bù -> Hạ nợ Hàng " & $iMaxDebtRow & " từ B" & $iHighStep & " xuống B" & $g_aTierStep[$iMaxDebtRow] & "!")
+					_UpdateStatus("🛡️ [SAN SẺ NỢ - GỌT NỢ] Quỹ lãi phụ đủ bù -> Hạ nợ Hàng " & $iMaxDebtRow & " từ B" & $iHighStep & " xuống B" & $g_aTierStep[$iMaxDebtRow] & "!")
 				EndIf
 			EndIf
 		EndIf
 	EndIf
 
-	; 6. Kiểm tra kịch kim từng hàng
+	; 5. Kiểm tra kịch kim từng hàng
 	Local $iMaxLimit = $g_aXD_MaxStepsPerRow[$g_iCurrentTier]
 	If $g_aTierStep[$g_iCurrentTier] > $iMaxLimit Then
 		_UpdateStatus("⚠️ [CẮT LỖ TOÀN CỤC] Hàng " & $g_iCurrentTier & " chạm kịch kim " & $iMaxLimit & " bước! Reset toàn bộ về B1.")
@@ -2803,7 +2818,7 @@ Func _ProcessOutcome_XocDia_VIP($sActualResult, $sBetOn)
 		$g_fXD_AmortizePool = 0
 	EndIf
 
-	; 7. Khóa Chốt Lãi Chu Kỳ (Tự xóa sạch nợ toàn bảng khi đạt mục tiêu lãi vòng)
+	; 6. Khóa Chốt Lãi Chu Kỳ (Tự xóa sạch nợ toàn bảng khi đạt mục tiêu lãi vòng)
 	Local $bAllClean = False
 	If GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED Then
 		Local $fTarget = Number(StringRegExpReplace(GUICtrlRead($g_hInput_XD_TargetProfit), "\D", ""))
@@ -3756,6 +3771,7 @@ Func _LoadSelectedProfile($sProfileName)
 
 	GUICtrlSetState($g_hCheckbox_XD_AutoResetDebt, (IniRead($g_sIniPath, $sSection, "XD_AutoResetDebt", "1") == "1") ? $GUI_CHECKED : $GUI_UNCHECKED)
 	GUICtrlSetData($g_hInput_XD_TargetProfit, _FormatNumber(Number(StringRegExpReplace(IniRead($g_sIniPath, $sSection, "XD_TargetProfit", "20.000"), "[^0-9]", ""))))
+	GUICtrlSetState($g_hCheckbox_XD_ShareDebt, (IniRead($g_sIniPath, $sSection, "XD_ShareDebt", "1") == "1") ? $GUI_CHECKED : $GUI_UNCHECKED)
 
 	GUICtrlSetData($g_hInput_LimitBtnX, IniRead($g_sIniPath, $sSection, "LimitBtnX", "0"))
 	GUICtrlSetData($g_hInput_LimitBtnY, IniRead($g_sIniPath, $sSection, "LimitBtnY", "0"))
@@ -3853,6 +3869,7 @@ Func _MasterSave($sProfileName, $bSilent = False)
 	IniWrite($g_sIniPath, $sSection, "XD_DemoKeep", (GUICtrlRead($g_hRadio_XD_DemoKeep) == $GUI_CHECKED) ? "1" : "0")
 	IniWrite($g_sIniPath, $sSection, "XD_AutoResetDebt", (GUICtrlRead($g_hCheckbox_XD_AutoResetDebt) == $GUI_CHECKED) ? "1" : "0")
 	IniWrite($g_sIniPath, $sSection, "XD_TargetProfit", GUICtrlRead($g_hInput_XD_TargetProfit))
+	IniWrite($g_sIniPath, $sSection, "XD_ShareDebt", (GUICtrlRead($g_hCheckbox_XD_ShareDebt) == $GUI_CHECKED) ? "1" : "0")
 
 	IniWrite($g_sIniPath, $sSection, "LimitBtnX", GUICtrlRead($g_hInput_LimitBtnX))
 	IniWrite($g_sIniPath, $sSection, "LimitBtnY", GUICtrlRead($g_hInput_LimitBtnY))
